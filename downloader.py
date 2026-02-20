@@ -1,0 +1,192 @@
+# -*- coding: utf-8 -*-
+"""
+🎬 Video Downloader Module
+使用 yt-dlp 下载视频音频
+"""
+
+import os
+import sys
+import subprocess
+import json
+import re
+from pathlib import Path
+from typing import Optional, Dict
+
+
+def get_yt_dlp_path() -> str:
+    """获取 yt-dlp 路径"""
+    # 检查 venv 中是否有 yt-dlp
+    venv_dir = Path(sys.executable).parent
+    yt_dlp_venv = venv_dir / "yt-dlp.exe"
+    if yt_dlp_venv.exists():
+        return str(yt_dlp_venv)
+    
+    # 尝试直接调用
+    return "yt-dlp"
+
+
+class VideoDownloader:
+    """视频下载器 - 仅下载音频流"""
+    
+    # 支持的平台域名映射
+    PLATFORMS = {
+        'youtube.com': 'YouTube',
+        'youtu.be': 'YouTube',
+        'bilibili.com': 'Bilibili',
+        'b23.tv': 'Bilibili',
+        'douyin.com': 'Douyin',
+        'xiaohongshu.com': 'Xiaohongshu',
+        'instagram.com': 'Instagram',
+        'tiktok.com': 'TikTok',
+    }
+    
+    def __init__(self, output_dir: str = "downloads"):
+        """
+        初始化下载器
+        
+        Args:
+            output_dir: 音频输出目录
+        """
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+    
+    def detect_platform(self, url: str) -> str:
+        """检测视频平台"""
+        for domain, platform in self.PLATFORMS.items():
+            if domain in url.lower():
+                return platform
+        return 'Unknown'
+    
+    def get_output_path(self, url: str, platform: str) -> Path:
+        """生成输出文件路径"""
+        # 使用 URL hash 作为文件名，避免特殊字符问题
+        import hashlib
+        url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
+        
+        ext = 'm4a' if platform in ['Bilibili', 'YouTube'] else 'mp3'
+        return self.output_dir / f"{platform}_{url_hash}.{ext}"
+    
+    def download(self, url: str, force: bool = False) -> Dict:
+        """
+        下载视频音频
+        
+        Args:
+            url: 视频链接
+            force: 是否强制重新下载
+            
+        Returns:
+            包含音频路径、平台、视频标题的字典
+        """
+        platform = self.detect_platform(url)
+        output_path = self.get_output_path(url, platform)
+        
+        # 如果文件已存在且不强制下载，直接返回
+        if output_path.exists() and not force:
+            print(f"📁 音频已存在: {output_path}")
+            return {
+                'audio_path': str(output_path),
+                'platform': platform,
+                'title': output_path.stem,
+                'url': url
+            }
+        
+        print(f"⬇️ 开始下载: {url}")
+        print(f"📍 平台: {platform}")
+        
+        # yt-dlp 命令构建
+        yt_dlp = get_yt_dlp_path()
+        
+        # 使用最佳音频质量，输出为 m4a/mp3
+        if platform == 'Bilibili':
+            # B站需要指定音频格式
+            cmd = [
+                yt_dlp,
+                '-f', 'bestaudio',
+                '--audio-format', 'm4a',
+                '--audio-quality', '0',
+                '-o', str(output_path),
+                url
+            ]
+        else:
+            # YouTube 等平台
+            cmd = [
+                yt_dlp,
+                '-f', 'bestaudio',
+                '--audio-format', 'm4a',
+                '--audio-quality', '0',
+                '-o', str(output_path),
+                '--no-playlist',
+                url
+            ]
+        
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=600  # 10分钟超时
+            )
+            
+            if result.returncode != 0:
+                raise Exception(f"下载失败: {result.stderr}")
+            
+            # 获取视频标题
+            title = self._get_title(url) or output_path.stem
+            
+            print(f"✅ 下载完成: {output_path.name}")
+            
+            return {
+                'audio_path': str(output_path),
+                'platform': platform,
+                'title': title,
+                'url': url
+            }
+            
+        except subprocess.TimeoutExpired:
+            raise Exception("下载超时 (超过10分钟)")
+        except FileNotFoundError:
+            raise Exception("yt-dlp 未安装，请运行: pip install yt-dlp")
+        except Exception as e:
+            raise Exception(f"下载失败: {str(e)}")
+    
+    def _get_title(self, url: str) -> Optional[str]:
+        """获取视频标题"""
+        try:
+            cmd = [
+                get_yt_dlp_path(),
+                '--get-title',
+                '--no-download',
+                url
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                title = result.stdout.strip()
+                # 清理标题中的非法文件名字符
+                title = re.sub(r'[<>:"/\\|?*]', '_', title)
+                return title[:100]  # 限制长度
+        except:
+            pass
+        return None
+    
+    def cleanup(self, audio_path: str):
+        """删除临时音频文件"""
+        try:
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
+                print(f"🗑️ 已清理: {audio_path}")
+        except Exception as e:
+            print(f"⚠️ 清理失败: {e}")
+
+
+if __name__ == "__main__":
+    # 测试下载
+    downloader = VideoDownloader()
+    
+    # 测试 URL
+    test_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    
+    try:
+        result = downloader.download(test_url)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    except Exception as e:
+        print(f"❌ 错误: {e}")

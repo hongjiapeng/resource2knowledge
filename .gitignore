@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv/
+
+# Environment
+.env
+.env.local
+
+# Logs & Cache
+logs/
+*.log
+*.tmp
+checkpoints/
+__pycache__/
+
+# Downloads
+downloads/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Output
+notion_mock_output.json
