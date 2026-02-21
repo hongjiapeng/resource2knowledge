@@ -1,6 +1,6 @@
-# 🎬 Video Pipeline - 本地视频转文本工作流
+# 🌐 Resource2Knowledge - 互联网资源知识入库工作流
 
-> 本地运行、无需付费 API、适配 8GB 显存
+> 本地运行、无需付费 API、适配 8GB 显存（当前支持视频，后续可扩展图文）
 
 ## 📋 功能概览
 
@@ -15,6 +15,18 @@
 
 ---
 
+
+
+## 🎯 项目定位
+
+将互联网上的内容资源沉淀为可检索的个人知识库。
+
+- **当前输入**: 视频链接（如 YouTube、Bilibili）
+- **后续输入规划**: 图文内容（如小红书图文）
+- **当前输出**: Notion 数据库
+- **后续输出规划**: CSV / Excel 等离线格式
+
+---
 ## 🖥️ 环境要求
 
 - **OS**: Windows 11
@@ -30,8 +42,8 @@
 
 ```powershell
 # 创建项目目录
-mkdir video_pipeline
-cd video_pipeline
+mkdir resource2knowledge
+cd resource2knowledge
 
 # 创建虚拟环境 (推荐)
 python -m venv venv
@@ -90,7 +102,7 @@ ollama list
 
 1. 访问 https://www.notion.so/my-integrations
 2. 点击 **New integration**
-3. 名称: `Video Pipeline`
+3. 名称: `Resource2Knowledge`
 4. 获取 **Internal Integration Token**
 
 ### 步骤 2: 创建数据库
@@ -113,7 +125,7 @@ ollama list
 ### 步骤 3: 分享数据库给 Integration
 
 1. 打开 Notion 数据库页面
-2. 点击右上角 `...` → `Connections` → 添加 `Video Pipeline`
+2. 点击右上角 `...` → `Connections` → 添加 `Resource2Knowledge`
 
 ### 步骤 4: 获取 Database ID
 
@@ -235,7 +247,7 @@ python -c "import torch; print(f'VRAM: {torch.cuda.get_device_properties(0).tota
 ## 📁 项目结构
 
 ```
-video_pipeline/
+resource2knowledge/
 ├── main.py              # 主入口
 ├── downloader.py        # 视频下载
 ├── transcriber.py       # Whisper 转录
