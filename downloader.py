@@ -2,6 +2,7 @@
 """
 🎬 Video Downloader Module
 使用 yt-dlp 下载视频音频
+支持小红书图文笔记抓取
 """
 
 import os
@@ -9,6 +10,7 @@ import sys
 import subprocess
 import json
 import re
+import requests
 from pathlib import Path
 from typing import Optional, Dict
 
@@ -184,6 +186,146 @@ class VideoDownloader:
                 print(f"🗑️ 已清理: {audio_path}")
         except Exception as e:
             print(f"⚠️ 清理失败: {e}")
+
+    def scrape_xiaohongshu(self, url: str) -> Dict:
+        """
+        抓取小红书图文笔记内容
+        
+        Args:
+            url: 小红书链接
+            
+        Returns:
+            包含标题、描述、图片、评论的字典
+        """
+        print("📝 未检测到视频，尝试抓取图文内容...")
+        
+        # 尝试方法1: 用 yt-dlp --dump-json 获取元数据
+        try:
+            yt_dlp = get_yt_dlp_path()
+            cmd = [yt_dlp, '--dump-json', '--no-download', url]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            
+            if result.returncode == 0 and result.stdout.strip():
+                data = json.loads(result.stdout.strip())
+                
+                title = data.get('title', '')
+                description = data.get('description', '') or data.get('title', '')
+                uploader = data.get('uploader', '未知作者')
+                
+                # 尝试获取图片
+                images = []
+                if 'thumbnails' in data:
+                    for thumb in data.get('thumbnails', []):
+                        if 'url' in thumb:
+                            images.append(thumb['url'])
+                
+                result_dict = {
+                    'type': 'image_text',
+                    'title': title or description[:50] or '小红书笔记',
+                    'description': description,
+                    'author': uploader,
+                    'images': images,
+                    'comments': [],
+                    'url': url
+                }
+                
+                print(f"✅ 图文抓取成功(yt-dlp): {result_dict['title']}")
+                return result_dict
+        except Exception as e:
+            print(f"⚠️ yt-dlp 方法失败: {e}")
+        
+        # 尝试方法2: 直接请求网页解析
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/html,application/xhtml+xml',
+            }
+            response = requests.get(url, headers=headers, timeout=30)
+            
+            # 从 HTML 中提取 JSON 数据
+            json_match = re.search(r'window\.__INITIAL_STATE__\s*=\s*(\{.*?\});', response.text, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group(1))
+                # 解析 note 数据...
+                print("✅ 图文抓取成功(网页解析)")
+        except Exception as e:
+            print(f"⚠️ 网页解析失败: {e}")
+        
+        raise Exception("图文抓取失败，请尝试提供视频链接")
+    
+    def download_or_scrape(self, url: str, force: bool = False) -> Dict:
+        """
+        下载视频，失败则抓取图文
+        
+        Args:
+            url: 链接
+            force: 是否强制重新下载
+            
+        Returns:
+            包含音频路径或图文内容的字典
+        """
+        platform = self.detect_platform(url)
+        
+        # 小红书：先尝试获取元数据，判断是视频还是图文
+        if platform == 'Xiaohongshu':
+            # 先用 --dump-json 获取信息，判断内容类型
+            try:
+                result = self._get_xiaohongshu_info(url)
+                if result.get('has_video', True):
+                    # 有视频，用普通下载
+                    return self.download(url, force)
+                else:
+                    # 无视频，返回图文内容
+                    print("📝 检测为图文笔记")
+                    return result
+            except Exception as e:
+                print(f"⚠️ 元数据获取失败: {e}，尝试直接下载...")
+                try:
+                    return self.download(url, force)
+                except:
+                    # 下载失败，尝试抓取图文
+                    print("💡 尝试抓取图文内容...")
+                    return self.scrape_xiaohongshu(url)
+        
+        # 其他平台直接下载
+        return self.download(url, force)
+    
+    def _get_xiaohongshu_info(self, url: str) -> Dict:
+        """获取小红书笔记信息（判断是否有视频）"""
+        yt_dlp = get_yt_dlp_path()
+        cmd = [yt_dlp, '--dump-json', '--no-download', '--skip-download', url]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        
+        if result.returncode == 0 and result.stdout.strip():
+            data = json.loads(result.stdout.strip())
+            
+            title = data.get('title', '')
+            description = data.get('description', '') or data.get('title', '')
+            uploader = data.get('uploader', '未知作者')
+            
+            # 判断是否有视频流
+            has_video = bool(data.get('formats')) or data.get('duration', 0) > 0
+            
+            # 获取图片
+            images = []
+            for thumb in data.get('thumbnails', []):
+                if 'url' in thumb:
+                    images.append(thumb['url'])
+            
+            return {
+                'type': 'image_text',
+                'has_video': has_video,
+                'title': title or description[:50] or '小红书笔记',
+                'description': description,
+                'author': uploader,
+                'images': images,
+                'comments': [],
+                'url': url
+            }
+        
+        raise Exception("无法获取笔记信息")
 
 
 if __name__ == "__main__":

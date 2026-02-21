@@ -184,25 +184,61 @@ class VideoPipeline:
             }
         
         try:
-            # ========== Step 1: 下载音频 ==========
-            self.logger.info("\n📍 Step 1: 下载音频")
+            # ========== Step 1: 下载音频 或 抓取图文 ==========
+            self.logger.info("\n📍 Step 1: 下载/抓取内容")
             self.logger.info("-" * 30)
             
-            download_result = self.downloader.download(url)
-            audio_path = download_result['audio_path']
+            # 尝试下载视频，失败则抓取图文
+            download_result = self.downloader.download_or_scrape(url)
             
-            result['steps']['download'] = {
-                'status': 'success',
-                'audio_path': audio_path,
-                'platform': download_result['platform'],
-                'title': download_result['title']
-            }
-            result['title'] = download_result['title']
-            result['platform'] = download_result['platform']
-            self._save_checkpoint(result)
+            # 检查内容类型
+            content_type = download_result.get('type', 'video')
             
-            # ========== Step 2: 转录 ==========
-            if not skip_transcribe:
+            if content_type == 'image_text':
+                # 图文笔记：直接使用文本内容
+                self.logger.info("📝 检测到图文笔记")
+                
+                result['steps']['download'] = {
+                    'status': 'success',
+                    'type': 'image_text',
+                    'platform': 'Xiaohongshu',
+                    'title': download_result['title']
+                }
+                result['title'] = download_result['title']
+                result['platform'] = 'Xiaohongshu'
+                result['content_type'] = 'image_text'
+                
+                # 将图文内容转为"转录文本"
+                text_content = download_result.get('description', '')
+                if download_result.get('comments'):
+                    text_content += '\n\n评论:\n'
+                    for c in download_result['comments']:
+                        text_content += f"- {c['user']}: {c['text']}\n"
+                
+                result['transcript'] = text_content
+                result['image_text_data'] = download_result
+                self._save_checkpoint(result)
+                
+                audio_path = None
+            else:
+                # 视频内容
+                audio_path = download_result['audio_path']
+                
+                result['steps']['download'] = {
+                    'status': 'success',
+                    'audio_path': audio_path,
+                    'platform': download_result['platform'],
+                    'title': download_result['title']
+                }
+                result['title'] = download_result['title']
+                result['platform'] = download_result['platform']
+                self._save_checkpoint(result)
+            
+            # ========== Step 2: 转录 (仅视频内容) ==========
+            if content_type == 'image_text':
+                self.logger.info("⏭️ 图文笔记，跳过语音转录")
+                result['steps']['transcribe'] = {'status': 'skipped', 'reason': 'image_text'}
+            elif not skip_transcribe:
                 self.logger.info("\n📍 Step 2: 语音转文本 (Whisper)")
                 self.logger.info("-" * 30)
                 
@@ -247,9 +283,11 @@ class VideoPipeline:
                     self.logger.warning("模型检测未通过，尝试直接调用...")
                 
                 # 生成摘要
+                content_type = result.get('content_type', 'video')
                 summary_result = self.summarizer.summarize(
                     result['transcript'],
-                    max_length=Config.MAX_TRANSCRIPT_LENGTH
+                    max_length=Config.MAX_TRANSCRIPT_LENGTH,
+                    content_type=content_type
                 )
                 
                 # 释放显存

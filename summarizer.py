@@ -43,6 +43,26 @@ class Summarizer:
 - category 使用简短的中文分类
 - 直接输出 JSON，不要其他内容"""
 
+    # 图文内容分析 prompt
+    IMAGE_TEXT_PROMPT = """你是一个专业的小红书内容分析师。你的任务是对图文笔记内容进行分析总结。
+
+请按以下格式输出 JSON：
+{
+    "summary": "内容的详细总结 (100-500字)",
+    "key_points": ["要点1", "要点2", "要点3", "要点4", "要点5"],
+    "tags": ["标签1", "标签2", "标签3"],
+    "category": "内容分类",
+    "sentiment": "positive/negative/neutral",
+    "language": "zh/en/mixed"
+}
+
+要求：
+- summary 需要覆盖图文的核心内容和作者观点
+- key_points 提取最重要的 5 个要点
+- tags 基于内容自动生成相关标签
+- category 使用简短的中文分类
+- 直接输出 JSON，不要其他内容"""
+
     def __init__(self, model: Optional[str] = None):
         """
         初始化摘要生成器
@@ -102,13 +122,14 @@ class Summarizer:
             allocated = torch.cuda.memory_allocated() / 1024**3
             print(f"📊 显存占用: {allocated:.2f}GB")
     
-    def summarize(self, transcript: str, max_length: int = 2000) -> Dict:
+    def summarize(self, transcript: str, max_length: int = 2000, content_type: str = 'video') -> Dict:
         """
         生成摘要
         
         Args:
             transcript: 转录文本
             max_length: 最大输入长度 (字符)
+            content_type: 内容类型 ('video' 或 'image_text')
             
         Returns:
             包含 summary, key_points, tags 等的字典
@@ -118,12 +139,20 @@ class Summarizer:
             print(f"📄 文本过长 ({len(transcript)} 字符)，截断至 {max_length} 字符")
             transcript = transcript[:max_length] + "..."
         
-        print(f"🧠 开始生成摘要 (模型: {self.model})")
+        # 选择合适的 prompt
+        if content_type == 'image_text':
+            system_prompt = self.IMAGE_TEXT_PROMPT
+            content_label = "图文笔记内容"
+        else:
+            system_prompt = self.SYSTEM_PROMPT
+            content_label = "视频转录文本"
+        
+        print(f"🧠 开始生成摘要 (模型: {self.model}, 类型: {content_type})")
         
         try:
             response = ollama.generate(
                 model=self.model,
-                prompt=f"{self.SYSTEM_PROMPT}\n\n以下是视频转录文本:\n\n{transcript}",
+                prompt=f"{system_prompt}\n\n以下是{content_label}:\n\n{transcript}",
                 format="json",
                 options={
                     "temperature": 0.3,  # 低温度，更确定性的输出
