@@ -1,4 +1,4 @@
-# � ClipVault - Your Personal Internet Knowledge Archive
+# 🌐 ClipVault - Your Personal Internet Knowledge Archive
 
 > **Local AI-powered tool** to collect web content (video/image-text), transcribe, summarize, and archive to Notion/CSV. **No API fees required.**
 
