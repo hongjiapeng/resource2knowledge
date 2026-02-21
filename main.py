@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-🎬 Video Pipeline Main Entry
-视频转文本 + 总结 + 入库 完整工作流
+🌐 Resource2Knowledge Main Entry
+互联网资源转知识 + 总结 + 入库 工作流
 """
 
 import os
@@ -375,7 +375,7 @@ class VideoPipeline:
 def main():
     """CLI 入口"""
     parser = argparse.ArgumentParser(
-        description="视频转文本 + 总结 + 入库 工作流",
+        description="互联网资源转知识 + 总结 + 入库 工作流",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
