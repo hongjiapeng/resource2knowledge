@@ -63,7 +63,8 @@ class VideoDownloader:
         import hashlib
         url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
         
-        ext = 'm4a' if platform in ['Bilibili', 'YouTube'] else 'mp3'
+        # 小红书用 mp4，其他用 m4a
+        ext = 'mp4' if platform == 'Xiaohongshu' else 'm4a'
         return self.output_dir / f"{platform}_{url_hash}.{ext}"
     
     def download(self, url: str, force: bool = False) -> Dict:
@@ -82,7 +83,7 @@ class VideoDownloader:
         
         # 如果文件已存在且不强制下载，直接返回
         if output_path.exists() and not force:
-            print(f"📁 音频已存在: {output_path}")
+            print(f"📁 文件已存在: {output_path}")
             return {
                 'audio_path': str(output_path),
                 'platform': platform,
@@ -93,12 +94,20 @@ class VideoDownloader:
         print(f"⬇️ 开始下载: {url}")
         print(f"📍 平台: {platform}")
         
-        # yt-dlp 命令构建
         yt_dlp = get_yt_dlp_path()
         
-        # 使用最佳音频质量，输出为 m4a/mp3
-        if platform == 'Bilibili':
-            # B站需要指定音频格式
+        # ========== 平台特定配置 ==========
+        if platform == 'Xiaohongshu':
+            # 小红书：下载完整视频（保留视频轨道）
+            cmd = [
+                yt_dlp,
+                '-f', 'best',
+                '--merge-output-format', 'mp4',
+                '-o', str(output_path),
+                url
+            ]
+        elif platform == 'Bilibili':
+            # B站：下载音频
             cmd = [
                 yt_dlp,
                 '-f', 'bestaudio',
@@ -108,12 +117,11 @@ class VideoDownloader:
                 url
             ]
         else:
-            # YouTube 等平台
+            # YouTube 等平台：下载音频
             cmd = [
                 yt_dlp,
                 '-f', 'bestaudio',
                 '--audio-format', 'm4a',
-                '--audio-quality', '0',
                 '-o', str(output_path),
                 '--no-playlist',
                 url
