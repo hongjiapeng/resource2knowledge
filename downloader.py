@@ -40,6 +40,8 @@ class VideoDownloader:
         'xiaohongshu.com': 'Xiaohongshu',
         'instagram.com': 'Instagram',
         'tiktok.com': 'TikTok',
+        'x.com': 'X',
+        'twitter.com': 'X',
     }
     
     def __init__(self, output_dir: str = "downloads"):
