@@ -290,6 +290,24 @@ class VideoDownloader:
                     print("💡 尝试抓取图文内容...")
                     return self.scrape_xiaohongshu(url)
         
+        # X (Twitter)：先尝试下载，失败则抓取图文
+        if platform == 'X':
+            try:
+                return self.download(url, force)
+            except Exception as e:
+                error_msg = str(e)
+                # 检查是否是"没有视频"的错误
+                if 'No video could be found' in error_msg or 'No media found' in error_msg:
+                    print("💡 该帖子没有视频，尝试抓取文字和图片...")
+                    return self.scrape_x_tweet(url)
+                else:
+                    # 其他错误，也尝试抓取图文
+                    print(f"⚠️ 下载失败: {e}，尝试抓取帖子内容...")
+                    try:
+                        return self.scrape_x_tweet(url)
+                    except:
+                        raise  # 如果抓取也失败，抛出原错误
+        
         # 其他平台直接下载
         return self.download(url, force)
     
@@ -297,25 +315,25 @@ class VideoDownloader:
         """获取小红书笔记信息（判断是否有视频）"""
         yt_dlp = get_yt_dlp_path()
         cmd = [yt_dlp, '--dump-json', '--no-download', '--skip-download', url]
-        
+
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        
+
         if result.returncode == 0 and result.stdout.strip():
             data = json.loads(result.stdout.strip())
-            
+
             title = data.get('title', '')
             description = data.get('description', '') or data.get('title', '')
             uploader = data.get('uploader', '未知作者')
-            
+
             # 判断是否有视频流
             has_video = bool(data.get('formats')) or data.get('duration', 0) > 0
-            
+
             # 获取图片
             images = []
             for thumb in data.get('thumbnails', []):
                 if 'url' in thumb:
                     images.append(thumb['url'])
-            
+
             return {
                 'type': 'image_text',
                 'has_video': has_video,
@@ -326,8 +344,87 @@ class VideoDownloader:
                 'comments': [],
                 'url': url
             }
-        
+
         raise Exception("无法获取笔记信息")
+
+    def scrape_x_tweet(self, url: str) -> Dict:
+        """
+        抓取 X (Twitter) 帖子内容（文字 + 图片）
+        
+        Args:
+            url: X 帖子链接
+            
+        Returns:
+            包含文字内容、图片的字典
+        """
+        print("📝 检测为 X 帖子，尝试抓取内容...")
+        
+        # 提取 tweet ID 和用户名
+        tweet_id_match = re.search(r'/(?:status|i)/(\d+)', url)
+        username_match = re.search(r'x\.com/([^/]+)/status', url)
+        
+        tweet_id = tweet_id_match.group(1) if tweet_id_match else None
+        username = username_match.group(1) if username_match else None
+        
+        # 方法1: 尝试 vxtwitter.com API (最简单可靠)
+        if tweet_id and username:
+            try:
+                print(f"🔄 尝试 vxtwitter API...")
+                vx_url = f"https://api.vxtwitter.com/{username}/status/{tweet_id}"
+                response = requests.get(vx_url, timeout=30)
+                if response.status_code == 200:
+                    data = response.json()
+                    description = data.get('text', '')
+                    if description:
+                        # 获取图片
+                        images = data.get('media_urls', [])
+                        result_dict = {
+                            'type': 'image_text',
+                            'title': description[:50] or 'X 帖子',
+                            'description': description,
+                            'author': data.get('user_name', username),
+                            'images': images,
+                            'comments': [],
+                            'url': url
+                        }
+                        print(f"✅ X 帖子抓取成功: {result_dict['title']}")
+                        return result_dict
+            except Exception as e:
+                print(f"⚠️ vxtwitter 失败: {e}")
+        
+        # 方法2: 尝试 fxtwitter.com API
+        if tweet_id and username:
+            try:
+                print(f"🔄 尝试 fxtwitter API...")
+                fx_url = f"https://api.fxtwitter.com/{username}/status/{tweet_id}"
+                response = requests.get(fx_url, timeout=30)
+                if response.status_code == 200:
+                    data = response.json()
+                    tweet_data = data.get('tweet', {})
+                    description = tweet_data.get('text', '')
+                    if description:
+                        # 获取媒体
+                        images = []
+                        media = tweet_data.get('media', [])
+                        for m in media:
+                            if m.get('type') == 'photo':
+                                images.append(m.get('url', ''))
+                        
+                        result_dict = {
+                            'type': 'image_text',
+                            'title': description[:50] or 'X 帖子',
+                            'description': description,
+                            'author': tweet_data.get('author', {}).get('name', username),
+                            'images': images,
+                            'comments': [],
+                            'url': url
+                        }
+                        print(f"✅ X 帖子抓取成功(fxtwitter): {result_dict['title']}")
+                        return result_dict
+            except Exception as e:
+                print(f"⚠️ fxtwitter 失败: {e}")
+        
+        raise Exception("X 帖子抓取失败，请确认网络能访问 X")
 
 
 if __name__ == "__main__":
