@@ -56,11 +56,15 @@ if errorlevel 1 (
     goto :manual_python
 )
 
+:: Refresh PATH from registry so the new Python is visible in this session
+echo   Refreshing PATH...
+for /f "usebackq tokens=*" %%p in (`powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')"`) do set "PATH=%%p"
+
 set "PYTHON_CMD="
-where python >nul 2>nul
+python -c "import sys" >nul 2>nul
 if not errorlevel 1 set "PYTHON_CMD=python"
 if not defined PYTHON_CMD (
-    where py >nul 2>nul
+    py -c "import sys" >nul 2>nul
     if not errorlevel 1 set "PYTHON_CMD=py"
 )
 
@@ -108,7 +112,7 @@ set "VENV_PIP=venv\Scripts\pip.exe"
 
 :: Step 2: Upgrade pip
 echo [2/6] Upgrading pip...
-call %VENV_PIP% install --upgrade pip
+call %VENV_PY% -m pip install --upgrade pip
 if errorlevel 1 (
     echo [ERROR] Failed to upgrade pip.
     goto :fail
