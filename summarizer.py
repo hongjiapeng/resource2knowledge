@@ -5,6 +5,7 @@
 """
 
 import gc
+import json
 import torch
 import ollama
 from typing import Optional, Dict, List
@@ -13,16 +14,23 @@ from typing import Optional, Dict, List
 class Summarizer:
     """本地 LLM 摘要生成器"""
     
-    # 推荐模型配置 (适合 8GB 显存)
-    DEFAULT_MODEL = "qwen2.5:7b-instruct-q4_K_M"
-    
-    # 备选模型
-    ALT_MODELS = {
-        "qwen2.5:7b-instruct-q4_K_M": {"vram": "~4-5GB", "speed": "中等", "quality": "优秀"},
-        "llama3.2:3b-instruct-q4_K_M": {"vram": "~2-3GB", "speed": "快", "quality": "良好"},
-        "phi3.5:3.8b-mini-instruct-q4_K_M": {"vram": "~2GB", "speed": "很快", "quality": "一般"},
-        "mistral:7b-instruct-q4_K_M": {"vram": "~4GB", "speed": "中等", "quality": "良好"},
-    }
+    # 按优先级排列的模型关键词（越靠前越优先）
+    # 格式：(匹配关键词列表, 显示名, vram)
+    MODEL_PRIORITY = [
+        (["qwen2.5", "7b"],        "qwen2.5 7B",   "~4-5GB"),
+        (["qwen2.5", "14b"],       "qwen2.5 14B",  "~9GB"),
+        (["qwen2.5", "3b"],        "qwen2.5 3B",   "~2GB"),
+        (["qwen3",   "8b"],        "qwen3 8B",     "~5GB"),
+        (["qwen3",   "4b"],        "qwen3 4B",     "~3GB"),
+        (["llama3",  "8b"],        "llama3 8B",    "~5GB"),
+        (["llama3",  "3b"],        "llama3 3B",    "~2GB"),
+        (["mistral", "7b"],        "mistral 7B",   "~4GB"),
+        (["phi3"],                 "phi3",         "~2GB"),
+        (["phi"],                  "phi",          "~2GB"),
+    ]
+
+    # 兜底默认（无法自动检测时使用）
+    FALLBACK_MODEL = "qwen2.5:7b-instruct-q4_K_M"
     
     SYSTEM_PROMPT = """你是一个专业的视频内容分析师。你的任务是对视频 transcript（转录文本）进行总结。
 
@@ -63,14 +71,47 @@ class Summarizer:
 - category 使用简短的中文分类
 - 直接输出 JSON，不要其他内容"""
 
+    @classmethod
+    def detect_model(cls) -> str:
+        """从已安装的 Ollama 模型中自动选择最优模型"""
+        try:
+            raw = getattr(ollama.list(), 'models', None) or ollama.list().get('models', [])
+            installed = []
+            for m in raw:
+                name = (getattr(m, 'model', None) or getattr(m, 'name', None)
+                        or m.get('model', '') or m.get('name', ''))
+                if name:
+                    installed.append(name)
+
+            if not installed:
+                return cls.FALLBACK_MODEL
+
+            print(f"📋 已安装模型: {installed}")
+
+            # 按优先级逐一匹配
+            for keywords, label, _ in cls.MODEL_PRIORITY:
+                for name in installed:
+                    name_lower = name.lower()
+                    if all(kw in name_lower for kw in keywords):
+                        print(f"✅ 自动选择模型: {name} ({label})")
+                        return name
+
+            # 没有匹配到优先级列表，直接用第一个已安装的
+            print(f"⚠️ 未匹配优先级列表，使用已安装的第一个模型: {installed[0]}")
+            return installed[0]
+
+        except Exception as e:
+            print(f"⚠️ 自动检测模型失败: {e}，使用默认: {cls.FALLBACK_MODEL}")
+            return cls.FALLBACK_MODEL
+
     def __init__(self, model: Optional[str] = None):
         """
         初始化摘要生成器
         
         Args:
-            model: Ollama 模型名称
+            model: Ollama 模型名称，不传则自动检测
         """
-        self.model = model or self.DEFAULT_MODEL
+        self.model = model or self.detect_model()
     
     def check_ollama(self) -> bool:
         """检查 Ollama 服务是否可用"""
@@ -86,14 +127,22 @@ class Summarizer:
         """检查模型是否已下载"""
         try:
             models = ollama.list()
-            model_names = [m.get('name', '') for m in models.get('models', [])]
+            # 兼容新旧版 ollama 库：对象属性 or 字典键
+            raw = getattr(models, 'models', None) or models.get('models', [])
+            model_names = []
+            for m in raw:
+                name = getattr(m, 'model', None) or getattr(m, 'name', None) or m.get('model', '') or m.get('name', '')
+                if name:
+                    model_names.append(name)
             
             print(f"📋 已安装模型: {model_names}")
             
-            # 处理模型名称格式 - 更宽松的匹配
-            base_model = self.model.split(':')[0]
+            # 精确匹配优先，再宽松匹配
+            if self.model in model_names:
+                return True
+            base_model = self.model.split(':')[0].split('/')[-1].lower()
             for name in model_names:
-                if base_model.lower() in name.lower():
+                if base_model in name.lower():
                     return True
             
             print(f"⚠️ 模型 {self.model} 未在列表中")
@@ -160,7 +209,6 @@ class Summarizer:
                 }
             )
             
-            import json
             result = json.loads(response.response)
             
             print("✅ 摘要生成完成")

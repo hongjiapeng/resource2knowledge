@@ -41,7 +41,7 @@ class Config:
     
     # 模型配置
     WHISPER_MODEL = "small"
-    LLM_MODEL = "qwen2.5:7b-instruct-q4_K_M"
+    LLM_MODEL = os.getenv("LLM_MODEL") or None  # None = 自动检测已安装模型
     
     # 转录配置
     TRANSCRIBE_LANGUAGE = "zh"  # 中文优先
