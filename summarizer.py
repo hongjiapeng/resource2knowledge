@@ -112,37 +112,37 @@ class Summarizer:
             if not installed:
                 return fallback_model or cls.FALLBACK_MODEL
 
-            print(f"📋 已安装模型: {installed}")
+            print(f"📋 Installed models: {installed}")
             
             # Prefer the primary model defined in the environment
             if primary_model and primary_model != "auto":
                 for name in installed:
                     if primary_model.lower() in name.lower():
-                        print(f"✅ 使用配置的主模型: {name}")
+                        print(f"✅ Using configured primary model: {name}")
                         return name
                 # If the primary model is unavailable, try the fallback model
                 if fallback_model:
                     for name in installed:
                         if fallback_model.lower() in name.lower():
-                            print(f"⚠️ 主模型未安装，使用备用模型: {name}")
+                            print(f"⚠️ Primary model not installed, using fallback model: {name}")
                             return name
                     # Neither configured model is installed
-                    print(f"⚠️ 主模型和备用模型都未安装，自动选择")
+                    print("⚠️ Neither the primary nor fallback model is installed. Selecting automatically.")
             
             # Automatic selection based on the priority list
             for keywords, label, _ in cls.MODEL_PRIORITY:
                 for name in installed:
                     name_lower = name.lower()
                     if all(kw in name_lower for kw in keywords):
-                        print(f"✅ 自动选择模型: {name} ({label})")
+                        print(f"✅ Automatically selected model: {name} ({label})")
                         return name
 
             # If nothing matches the priority list, use the first installed model
-            print(f"⚠️ 未匹配优先级列表，使用已安装的第一个模型: {installed[0]}")
+            print(f"⚠️ No priority-list match found. Using the first installed model: {installed[0]}")
             return installed[0]
 
         except Exception as e:
-            print(f"⚠️ 自动检测模型失败: {e}，使用默认: {fallback_model or cls.FALLBACK_MODEL}")
+            print(f"⚠️ Auto-detecting the model failed: {e}. Using default: {fallback_model or cls.FALLBACK_MODEL}")
             return fallback_model or cls.FALLBACK_MODEL
 
     def __init__(self, model: Optional[str] = None):
@@ -177,7 +177,7 @@ class Summarizer:
         """Extract the first valid JSON object from the model response."""
         text = response_text.strip()
         if not text:
-            raise ValueError("模型返回为空")
+            raise ValueError("The model returned an empty response")
 
         decoder = json.JSONDecoder()
         for index, char in enumerate(text):
@@ -190,7 +190,7 @@ class Summarizer:
             except json.JSONDecodeError:
                 continue
 
-        raise ValueError("无法从响应中提取合法 JSON 对象")
+        raise ValueError("Unable to extract a valid JSON object from the response")
 
     def _generate_structured(self, model: str, prompt_text: str) -> Dict:
         """Prefer Ollama's structured-output support when available."""
@@ -223,8 +223,8 @@ class Summarizer:
             ollama.list()
             return True
         except Exception as e:
-            print(f"❌ Ollama 连接失败: {e}")
-            print("💡 请确保 Ollama 已启动: ollama serve")
+            print(f"❌ Ollama connection failed: {e}")
+            print("💡 Make sure Ollama is running: ollama serve")
             return False
     
     def check_model_loaded(self) -> bool:
@@ -239,7 +239,7 @@ class Summarizer:
                 if name:
                     model_names.append(name)
             
-            print(f"📋 已安装模型: {model_names}")
+            print(f"📋 Installed models: {model_names}")
             
             # Prefer exact matches, then fall back to loose matching
             if self.model in model_names:
@@ -249,16 +249,16 @@ class Summarizer:
                 if base_model in name.lower():
                     return True
             
-            print(f"⚠️ 模型 {self.model} 未在列表中")
-            print(f"📥 请运行: ollama pull {self.model}")
+            print(f"⚠️ Model {self.model} is not in the installed model list")
+            print(f"📥 Run: ollama pull {self.model}")
             return False
         except Exception as e:
-            print(f"❌ 检查模型失败: {e}")
+            print(f"❌ Failed to check model availability: {e}")
             return False
     
     def load_model(self):
         """Warm up the model (optional)."""
-        print(f"🔥 预热模型: {self.model}")
+        print(f"🔥 Warming up model: {self.model}")
         try:
             # Simple warm-up request
             ollama.generate(
@@ -266,14 +266,14 @@ class Summarizer:
                 prompt="你好",
                 options={"num_predict": 1}
             )
-            print("✅ 模型预热完成")
+            print("✅ Model warm-up complete")
         except Exception as e:
-            print(f"⚠️ 预热失败: {e}")
+            print(f"⚠️ Model warm-up failed: {e}")
         
         # Print current VRAM usage
         if torch.cuda.is_available():
             allocated = torch.cuda.memory_allocated() / 1024**3
-            print(f"📊 显存占用: {allocated:.2f}GB")
+            print(f"📊 VRAM usage: {allocated:.2f}GB")
     
     def summarize(self, transcript: str, max_length: int = 2000, content_type: str = 'video') -> Dict:
         """
@@ -289,7 +289,7 @@ class Summarizer:
         """
         # Truncate overly long text
         if len(transcript) > max_length:
-            print(f"📄 文本过长 ({len(transcript)} 字符)，截断至 {max_length} 字符")
+            print(f"📄 Text is too long ({len(transcript)} chars). Truncating to {max_length} chars")
             transcript = transcript[:max_length] + "..."
         
         # Select the appropriate prompt template
@@ -300,7 +300,7 @@ class Summarizer:
             system_prompt = self.SYSTEM_PROMPT
             content_label = "视频转录文本"
         
-        print(f"🧠 开始生成摘要 (模型: {self.model}, 类型: {content_type})")
+        print(f"🧠 Starting summary generation (model: {self.model}, type: {content_type})")
 
         import os
         fallback_model = os.getenv("LLM_MODEL_FALLBACK")
@@ -317,30 +317,30 @@ class Summarizer:
 
             try:
                 result = self._generate_structured(model_name, prompt_text)
-                print(f"✅ 摘要生成完成 (结构化输出: {model_name})")
+                print(f"✅ Summary generation complete (structured output: {model_name})")
                 return self._normalize_result(result)
             except Exception as structured_error:
                 errors.append(f"{model_name} structured: {structured_error}")
-                print(f"⚠️ 模型 {model_name} 结构化输出失败: {structured_error}")
+                print(f"⚠️ Structured output failed for model {model_name}: {structured_error}")
 
             try:
                 result = self._generate_unstructured(model_name, prompt_text)
-                print(f"✅ 摘要生成完成 (文本提取 JSON: {model_name})")
+                print(f"✅ Summary generation complete (JSON extracted from text: {model_name})")
                 return self._normalize_result(result)
             except Exception as unstructured_error:
                 errors.append(f"{model_name} text: {unstructured_error}")
-                print(f"⚠️ 模型 {model_name} 文本提取 JSON 失败: {unstructured_error}")
+                print(f"⚠️ JSON extraction from text failed for model {model_name}: {unstructured_error}")
 
         try:
-            print("⚠️ 结构化输出和 JSON 提取均失败，使用备用摘要方法")
+            print("⚠️ Structured output and JSON extraction both failed. Using fallback summarization.")
             return self._fallback_summarize(transcript)
         except Exception as fallback_error:
             errors.append(f"fallback summary: {fallback_error}")
-            raise Exception("摘要生成失败: " + " | ".join(errors))
+            raise Exception("Summary generation failed: " + " | ".join(errors))
     
     def _fallback_summarize(self, transcript: str) -> Dict:
         """Fallback summarization method used when JSON parsing fails."""
-        print("🔄 使用备用摘要方法...")
+        print("🔄 Using fallback summarization...")
         
         try:
             response = ollama.generate(
@@ -358,7 +358,7 @@ class Summarizer:
                 'language': 'zh',
             }
         except Exception as e:
-            raise Exception(f"备用摘要也失败: {str(e)}")
+            raise Exception(f"Fallback summarization also failed: {str(e)}")
     
     def unload_model(self):
         """Release VRAM by clearing caches."""
@@ -366,7 +366,7 @@ class Summarizer:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
-        print("✅ LLM 显存已释放")
+        print("✅ LLM VRAM released")
     
     @staticmethod
     def get_available_models() -> List[Dict]:
@@ -389,7 +389,7 @@ if __name__ == "__main__":
     summarizer = Summarizer()
     
     if not summarizer.check_ollama():
-        print("❌ Ollama 未运行")
+        print("❌ Ollama is not running")
         exit(1)
     
     if not summarizer.check_model_loaded():

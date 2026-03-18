@@ -119,10 +119,10 @@ class VideoPipeline:
                 )
                 self.notion_writer.test_connection()
             except Exception as e:
-                self.logger.warning(f"Notion 初始化失败: {e}，将使用 Mock 模式")
+                self.logger.warning(f"Notion initialization failed: {e}. Falling back to Mock mode.")
                 self.notion_writer = MockNotionWriter()
         else:
-            self.logger.info("未配置 Notion，使用 Mock 模式")
+            self.logger.info("Notion is not configured. Using Mock mode.")
             self.notion_writer = MockNotionWriter()
         
         # Checkpoint directory
@@ -141,9 +141,9 @@ class VideoPipeline:
             checkpoint_path = self._get_checkpoint_path(result['url'])
             with open(checkpoint_path, 'w', encoding='utf-8') as f:
                 json.dump(result, f, ensure_ascii=False, indent=2)
-            self.logger.info(f"💾 断点已保存: {checkpoint_path.name}")
+            self.logger.info(f"💾 Checkpoint saved: {checkpoint_path.name}")
         except Exception as e:
-            self.logger.warning(f"保存断点失败: {e}")
+            self.logger.warning(f"Failed to save checkpoint: {e}")
     
     def _load_checkpoint(self, url: str) -> Optional[dict]:
         """Load a processing checkpoint."""
@@ -154,11 +154,11 @@ class VideoPipeline:
                     result = json.load(f)
                 # Skip already completed tasks
                 if result.get('status') == 'success':
-                    self.logger.info("✓ 任务已完成，跳过")
+                    self.logger.info("✓ Task already completed. Skipping.")
                     return None
                 return result
         except Exception as e:
-            self.logger.warning(f"加载断点失败: {e}")
+            self.logger.warning(f"Failed to load checkpoint: {e}")
         return None
     
     def run(self, url: str, skip_transcribe: bool = False, skip_summary: bool = False, resume: bool = True) -> dict:
@@ -175,21 +175,21 @@ class VideoPipeline:
             A dictionary containing all processing results
         """
         self.logger.info("=" * 50)
-        self.logger.info(f"🚀 开始处理: {url}")
+        self.logger.info(f"🚀 Starting processing: {url}")
         self.logger.info("=" * 50)
         
         # Try to resume from a checkpoint
         result = self._load_checkpoint(url)
         
         if result and resume:
-            self.logger.info("📂 从断点恢复...")
+            self.logger.info("📂 Resuming from checkpoint...")
             # Restore existing data from the checkpoint
             if 'title' in result:
-                self.logger.info(f"   已有标题: {result['title']}")
+                self.logger.info(f"   Existing title: {result['title']}")
             if 'transcript' in result and result.get('steps', {}).get('transcribe', {}).get('status') == 'success':
-                self.logger.info("   ✓ 转录已完成")
+                self.logger.info("   ✓ Transcription already completed")
             if 'summary' in result and result.get('steps', {}).get('summarize', {}).get('status') == 'success':
-                self.logger.info("   ✓ 摘要已完成")
+                self.logger.info("   ✓ Summary already completed")
         else:
             result = {
                 'url': url,
@@ -200,7 +200,7 @@ class VideoPipeline:
         
         try:
             # ========== Step 1: Download audio or scrape image-text content ==========
-            self.logger.info("\n📍 Step 1: 下载/抓取内容")
+            self.logger.info("\n📍 Step 1: Download or scrape content")
             self.logger.info("-" * 30)
             
             # Try downloading the video first; fall back to scraping if needed
@@ -211,7 +211,7 @@ class VideoPipeline:
             
             if content_type == 'image_text':
                 # Image-text note: use the scraped text content directly
-                self.logger.info("📝 检测到图文笔记")
+                self.logger.info("📝 Detected image-text note")
                 
                 result['steps']['download'] = {
                     'status': 'success',
@@ -251,10 +251,10 @@ class VideoPipeline:
             
             # ========== Step 2: Transcription (video content only) ==========
             if content_type == 'image_text':
-                self.logger.info("⏭️ 图文笔记，跳过语音转录")
+                self.logger.info("⏭️ Image-text note detected, skipping speech transcription")
                 result['steps']['transcribe'] = {'status': 'skipped', 'reason': 'image_text'}
             elif not skip_transcribe:
-                self.logger.info("\n📍 Step 2: 语音转文本 (Whisper)")
+                self.logger.info("\n📍 Step 2: Speech to text (Whisper)")
                 self.logger.info("-" * 30)
                 
                 # Retry on failure and automatically fall back to CPU
@@ -266,7 +266,7 @@ class VideoPipeline:
                 for attempt in range(max_retries):
                     try:
                         # Try CUDA first
-                        self.logger.info(f"🔄 尝试加载 Whisper (CUDA) - 尝试 {attempt + 1}/{max_retries}")
+                        self.logger.info(f"🔄 Trying to load Whisper (CUDA) - attempt {attempt + 1}/{max_retries}")
                         self.transcriber.load_model(device="cuda")
                         
                         # Run transcription
@@ -291,12 +291,12 @@ class VideoPipeline:
                         
                     except Exception as cuda_error:
                         last_error = cuda_error
-                        self.logger.warning(f"⚠️ CUDA 转录失败: {cuda_error}")
+                        self.logger.warning(f"⚠️ CUDA transcription failed: {cuda_error}")
                         self.transcriber.unload_model()
                         
                         # Fall back to CPU
                         try:
-                            self.logger.info("🔄 尝试降级到 CPU...")
+                            self.logger.info("🔄 Falling back to CPU...")
                             self.transcriber.load_model(device="cpu", compute_type="int8")
                             
                             transcript_result = self.transcriber.transcribe(
@@ -315,31 +315,31 @@ class VideoPipeline:
                             }
                             result['transcript'] = transcript_result['text']
                             self._save_checkpoint(result)
-                            self.logger.info("✅ CPU 转录成功!")
+                            self.logger.info("✅ CPU transcription succeeded!")
                             break
                             
                         except Exception as cpu_error:
                             last_error = cpu_error
-                            self.logger.warning(f"⚠️ CPU 转录也失败: {cpu_error}")
+                            self.logger.warning(f"⚠️ CPU transcription also failed: {cpu_error}")
                             self.transcriber.unload_model()
                         
                         # Wait before retrying unless this was the last attempt
                         if attempt < max_retries - 1:
-                            self.logger.info(f"⏳ {retry_delay}秒后重试...")
+                            self.logger.info(f"⏳ Retrying in {retry_delay} seconds...")
                             import time
                             time.sleep(retry_delay)
                             retry_delay *= 2  # Exponential backoff
                 
                 else:
                     # All retry attempts failed
-                    self.logger.error(f"❌ 转录重试{max_retries}次后仍失败: {last_error}")
+                    self.logger.error(f"❌ Transcription still failed after {max_retries} retries: {last_error}")
                     result['steps']['transcribe'] = {
                         'status': 'error',
                         'error': str(last_error)
                     }
                     raise last_error
             else:
-                self.logger.info("⏭️ 跳过转录步骤")
+                self.logger.info("⏭️ Skipping transcription step")
             
             # ========== Step 3: Clean up audio files ==========
             if Config.CLEANUP_AUDIO and audio_path:
@@ -347,7 +347,7 @@ class VideoPipeline:
             
             # ========== Step 4: Generate summary ==========
             if not skip_summary and 'transcript' in result:
-                self.logger.info("\n📍 Step 3: 生成摘要 (LLM)")
+                self.logger.info("\n📍 Step 3: Generate summary (LLM)")
                 self.logger.info("-" * 30)
 
                 transcript_for_summary = result['transcript']
@@ -369,11 +369,11 @@ class VideoPipeline:
                 
                 # Check whether Ollama is available
                 if not self.summarizer.check_ollama():
-                    raise Exception("Ollama 未运行")
+                    raise Exception("Ollama is not running")
                 
                 # Check the model; still try running even if lookup fails
                 if not self.summarizer.check_model_loaded():
-                    self.logger.warning("模型检测未通过，尝试直接调用...")
+                    self.logger.warning("Model check did not pass. Trying a direct call anyway...")
                 
                 # Generate the summary
                 content_type = result.get('content_type', 'video')
@@ -398,16 +398,16 @@ class VideoPipeline:
                 result['language'] = summary_result.get('language', 'zh')
                 self._save_checkpoint(result)
             else:
-                self.logger.info("⏭️ 跳过摘要步骤")
+                self.logger.info("⏭️ Skipping summary step")
             
             # ========== Step 5: Write to Notion ==========
             if self.notion_writer:
-                self.logger.info("\n📍 Step 4: 写入 Notion")
+                self.logger.info("\n📍 Step 4: Write to Notion")
                 self.logger.info("-" * 30)
                 
                 # Check for duplicates
                 if self.notion_writer.check_duplicate(url):
-                    self.logger.warning("⚠️ URL 已存在，跳过写入")
+                    self.logger.warning("⚠️ URL already exists. Skipping write.")
                     result['steps']['notion'] = {'status': 'skipped', 'reason': 'duplicate'}
                 else:
                     # Prepare the payload
@@ -430,7 +430,7 @@ class VideoPipeline:
                     }
                     self._save_checkpoint(result)
             else:
-                self.logger.info("⏭️ 跳过 Notion 写入")
+                self.logger.info("⏭️ Skipping Notion write")
             
             # ========== Complete ==========
             result['status'] = 'success'
@@ -440,8 +440,8 @@ class VideoPipeline:
             result['elapsed_seconds'] = elapsed.total_seconds()
             
             self.logger.info("\n" + "=" * 50)
-            self.logger.info("✅ 处理完成!")
-            self.logger.info(f"⏱️ 总耗时: {elapsed.total_seconds():.1f} 秒")
+            self.logger.info("✅ Processing complete!")
+            self.logger.info(f"⏱️ Total elapsed time: {elapsed.total_seconds():.1f} seconds")
             self.logger.info("=" * 50)
             
             # Remove the checkpoint after a successful run
@@ -449,7 +449,7 @@ class VideoPipeline:
                 checkpoint_path = self._get_checkpoint_path(url)
                 if checkpoint_path.exists():
                     checkpoint_path.unlink()
-                    self.logger.info("🗑️ 断点文件已清理")
+                    self.logger.info("🗑️ Checkpoint file removed")
             except:
                 pass
             
@@ -461,46 +461,46 @@ class VideoPipeline:
             result['end_time'] = datetime.now().isoformat()
             # Save a checkpoint for failed runs
             self._save_checkpoint(result)
-            self.logger.error(f"❌ 处理失败: {e}")
-            self.logger.info("💡 重新运行将从断点继续")
+            self.logger.error(f"❌ Processing failed: {e}")
+            self.logger.info("💡 Re-running will continue from the saved checkpoint")
             raise
 
 
 def main():
     """CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="互联网资源转知识 + 总结 + 入库 工作流",
+        description="Internet resource to knowledge + summary + storage workflow",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-示例:
+Examples:
   python main.py "https://www.youtube.com/watch?v=xxx"
   python main.py "https://bilibili.com/video/xxx" --log-level DEBUG
   python main.py "url" --skip-summary
         """
     )
     
-    parser.add_argument('url', nargs='?', help='视频链接')
+    parser.add_argument('url', nargs='?', help='Video URL')
     parser.add_argument('--log-level', default='INFO', 
                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-                       help='日志级别')
+                       help='Log level')
     parser.add_argument('--skip-transcribe', action='store_true',
-                       help='跳过转录步骤')
+                       help='Skip the transcription step')
     parser.add_argument('--skip-summary', action='store_true',
-                       help='跳过摘要步骤')
+                       help='Skip the summary step')
     parser.add_argument('--skip-notion', action='store_true',
-                       help='跳过 Notion 写入')
+                       help='Skip writing to Notion')
     parser.add_argument('--disable-cleaning', action='store_true',
-                       help='禁用摘要前的 transcript 清洗')
+                       help='Disable transcript cleaning before summarization')
     parser.add_argument('--no-cleanup', action='store_true',
-                       help='不清理临时音频文件')
+                       help='Do not delete temporary audio files')
     parser.add_argument('--no-resume', action='store_true',
-                       help='不从断点恢复，重新开始')
+                       help='Start fresh instead of resuming from a checkpoint')
     
     args = parser.parse_args()
     
     if not args.url:
         parser.print_help()
-        print("\n请提供视频链接")
+        print("\nPlease provide a video URL")
         sys.exit(1)
     
     # Configure logging
@@ -527,11 +527,11 @@ def main():
         )
         
         # Print the JSON result
-        print("\n📊 处理结果:")
+        print("\n📊 Processing result:")
         print(json.dumps(result, indent=2, ensure_ascii=False))
         
     except Exception as e:
-        logger.error(f"工作流执行失败: {e}")
+        logger.error(f"Workflow execution failed: {e}")
         sys.exit(1)
 
 

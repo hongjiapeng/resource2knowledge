@@ -104,7 +104,7 @@ class VideoDownloader:
         
         # Return immediately if the file already exists and re-download is not forced
         if output_path.exists() and not force:
-            print(f"📁 文件已存在: {output_path}")
+            print(f"📁 File already exists: {output_path}")
             return {
                 'audio_path': str(output_path),
                 'platform': platform,
@@ -112,8 +112,8 @@ class VideoDownloader:
                 'url': url
             }
         
-        print(f"⬇️ 开始下载: {url}")
-        print(f"📍 平台: {platform}")
+        print(f"⬇️ Starting download: {url}")
+        print(f"📍 Platform: {platform}")
         
         yt_dlp = get_yt_dlp_path()
         
@@ -152,12 +152,12 @@ class VideoDownloader:
             result = run_command(cmd, timeout=600)
             
             if result.returncode != 0:
-                raise Exception(f"下载失败: {result.stderr}")
+                raise Exception(f"Download failed: {result.stderr}")
             
             # Retrieve the video title
             title = self._get_title(url) or output_path.stem
             
-            print(f"✅ 下载完成: {output_path.name}")
+            print(f"✅ Download complete: {output_path.name}")
             
             return {
                 'audio_path': str(output_path),
@@ -167,11 +167,11 @@ class VideoDownloader:
             }
             
         except subprocess.TimeoutExpired:
-            raise Exception("下载超时 (超过10分钟)")
+            raise Exception("Download timed out (over 10 minutes)")
         except FileNotFoundError:
-            raise Exception("yt-dlp 未安装，请运行: pip install yt-dlp")
+            raise Exception("yt-dlp is not installed. Run: pip install yt-dlp")
         except Exception as e:
-            raise Exception(f"下载失败: {str(e)}")
+            raise Exception(f"Download failed: {str(e)}")
     
     def _get_title(self, url: str) -> Optional[str]:
         """Get the video title."""
@@ -197,9 +197,9 @@ class VideoDownloader:
         try:
             if os.path.exists(audio_path):
                 os.remove(audio_path)
-                print(f"🗑️ 已清理: {audio_path}")
+                print(f"🗑️ Cleaned up: {audio_path}")
         except Exception as e:
-            print(f"⚠️ 清理失败: {e}")
+            print(f"⚠️ Cleanup failed: {e}")
 
     def scrape_xiaohongshu(self, url: str) -> Dict:
         """
@@ -211,7 +211,7 @@ class VideoDownloader:
         Returns:
             A dictionary containing the title, description, images, and comments
         """
-        print("📝 未检测到视频，尝试抓取图文内容...")
+        print("📝 No video detected, trying to scrape image-text content...")
         
         # Attempt 1: use yt-dlp --dump-json to fetch metadata
         try:
@@ -244,10 +244,10 @@ class VideoDownloader:
                     'url': url
                 }
                 
-                print(f"✅ 图文抓取成功(yt-dlp): {result_dict['title']}")
+                print(f"✅ Image-text scrape succeeded (yt-dlp): {result_dict['title']}")
                 return result_dict
         except Exception as e:
-            print(f"⚠️ yt-dlp 方法失败: {e}")
+            print(f"⚠️ yt-dlp method failed: {e}")
         
         # Attempt 2: request and parse the webpage directly
         try:
@@ -262,11 +262,11 @@ class VideoDownloader:
             if json_match:
                 data = json.loads(json_match.group(1))
                 # Parse the note payload...
-                print("✅ 图文抓取成功(网页解析)")
+                print("✅ Image-text scrape succeeded (page parsing)")
         except Exception as e:
-            print(f"⚠️ 网页解析失败: {e}")
+            print(f"⚠️ Page parsing failed: {e}")
         
-        raise Exception("图文抓取失败，请尝试提供视频链接")
+        raise Exception("Image-text scraping failed. Try providing a video URL instead.")
     
     def download_or_scrape(self, url: str, force: bool = False) -> Dict:
         """
@@ -291,15 +291,15 @@ class VideoDownloader:
                     return self.download(url, force)
                 else:
                     # No video: return the image-text payload
-                    print("📝 检测为图文笔记")
+                    print("📝 Detected image-text note")
                     return result
             except Exception as e:
-                print(f"⚠️ 元数据获取失败: {e}，尝试直接下载...")
+                print(f"⚠️ Failed to fetch metadata: {e}. Trying direct download...")
                 try:
                     return self.download(url, force)
                 except:
                     # Download failed, so fall back to scraping image-text content
-                    print("💡 尝试抓取图文内容...")
+                    print("💡 Trying to scrape image-text content...")
                     return self.scrape_xiaohongshu(url)
         
         # X (Twitter): try download first, then fall back to scraping
@@ -310,11 +310,11 @@ class VideoDownloader:
                 error_msg = str(e)
                 # Check whether this is specifically a "no video" error
                 if 'No video could be found' in error_msg or 'No media found' in error_msg:
-                    print("💡 该帖子没有视频，尝试抓取文字和图片...")
+                    print("💡 This post has no video. Trying to scrape text and images...")
                     return self.scrape_x_tweet(url)
                 else:
                     # For other errors, still try scraping the post content
-                    print(f"⚠️ 下载失败: {e}，尝试抓取帖子内容...")
+                    print(f"⚠️ Download failed: {e}. Trying to scrape the post content...")
                     try:
                         return self.scrape_x_tweet(url)
                     except:
@@ -357,7 +357,7 @@ class VideoDownloader:
                 'url': url
             }
 
-        raise Exception("无法获取笔记信息")
+        raise Exception("Unable to retrieve note information")
 
     def scrape_x_tweet(self, url: str) -> Dict:
         """
@@ -369,7 +369,7 @@ class VideoDownloader:
         Returns:
             A dictionary containing the text content and images
         """
-        print("📝 检测为 X 帖子，尝试抓取内容...")
+        print("📝 Detected an X post, trying to scrape content...")
         
         # Extract the tweet ID and username
         tweet_id_match = re.search(r'/(?:status|i)/(\d+)', url)
@@ -381,7 +381,7 @@ class VideoDownloader:
         # Method 1: try the vxtwitter.com API (the simplest and most reliable option)
         if tweet_id and username:
             try:
-                print(f"🔄 尝试 vxtwitter API...")
+                print("🔄 Trying the vxtwitter API...")
                 vx_url = f"https://api.vxtwitter.com/{username}/status/{tweet_id}"
                 response = requests.get(vx_url, timeout=30)
                 if response.status_code == 200:
@@ -399,15 +399,15 @@ class VideoDownloader:
                             'comments': [],
                             'url': url
                         }
-                        print(f"✅ X 帖子抓取成功: {result_dict['title']}")
+                        print(f"✅ X post scrape succeeded: {result_dict['title']}")
                         return result_dict
             except Exception as e:
-                print(f"⚠️ vxtwitter 失败: {e}")
+                print(f"⚠️ vxtwitter failed: {e}")
         
         # Method 2: try the fxtwitter.com API
         if tweet_id and username:
             try:
-                print(f"🔄 尝试 fxtwitter API...")
+                print("🔄 Trying the fxtwitter API...")
                 fx_url = f"https://api.fxtwitter.com/{username}/status/{tweet_id}"
                 response = requests.get(fx_url, timeout=30)
                 if response.status_code == 200:
@@ -431,12 +431,12 @@ class VideoDownloader:
                             'comments': [],
                             'url': url
                         }
-                        print(f"✅ X 帖子抓取成功(fxtwitter): {result_dict['title']}")
+                        print(f"✅ X post scrape succeeded (fxtwitter): {result_dict['title']}")
                         return result_dict
             except Exception as e:
-                print(f"⚠️ fxtwitter 失败: {e}")
+                print(f"⚠️ fxtwitter failed: {e}")
         
-        raise Exception("X 帖子抓取失败，请确认网络能访问 X")
+        raise Exception("Failed to scrape the X post. Make sure the network can access X.")
 
 
 if __name__ == "__main__":
@@ -450,4 +450,4 @@ if __name__ == "__main__":
         result = downloader.download(test_url)
         print(json.dumps(result, indent=2, ensure_ascii=False))
     except Exception as e:
-        print(f"❌ 错误: {e}")
+        print(f"❌ Error: {e}")

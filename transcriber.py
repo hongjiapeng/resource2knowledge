@@ -38,16 +38,16 @@ class WhisperTranscriber:
             compute_type: Compute type (optional; auto-selected by device when omitted)
         """
         if self.model is not None:
-            print("✅ 模型已加载")
+            print("✅ Model already loaded")
             return
         
         # Select the compute type automatically based on the device
         if compute_type is None:
             compute_type = "float16" if device == "cuda" else "int8"
         
-        print(f"📥 加载 Whisper {self.model_size} 模型...")
-        print(f"🖥️ 设备: {device}")
-        print(f"📊 计算类型: {compute_type}")
+        print(f"📥 Loading Whisper {self.model_size} model...")
+        print(f"🖥️ Device: {device}")
+        print(f"📊 Compute type: {compute_type}")
         
         try:
             self.model = WhisperModel(
@@ -56,13 +56,13 @@ class WhisperTranscriber:
                 compute_type=compute_type,
                 download_root=self.model_path
             )
-            print("✅ 模型加载完成")
+            print("✅ Model loaded")
             
             # Print estimated VRAM usage
             self._print_vram_usage()
             
         except Exception as e:
-            print(f"❌ 模型加载失败: {e}")
+            print(f"❌ Model loading failed: {e}")
             raise
     
     def _print_vram_usage(self):
@@ -70,7 +70,7 @@ class WhisperTranscriber:
         if torch.cuda.is_available():
             allocated = torch.cuda.memory_allocated() / 1024**3
             reserved = torch.cuda.memory_reserved() / 1024**3
-            print(f"📊 显存占用: {allocated:.2f}GB (已分配) / {reserved:.2f}GB (已预留)")
+            print(f"📊 VRAM usage: {allocated:.2f}GB (allocated) / {reserved:.2f}GB (reserved)")
     
     def transcribe(
         self,
@@ -92,7 +92,7 @@ class WhisperTranscriber:
         if self.model is None:
             self.load_model()
         
-        print(f"🎙️ 开始转录: {audio_path}")
+        print(f"🎙️ Starting transcription: {audio_path}")
         
         # Auto-detect the language, with Chinese preferred by default
         if language is None:
@@ -113,7 +113,7 @@ class WhisperTranscriber:
             transcript_segments = []
             full_text = []
             
-            print("📝 转录进度:")
+            print("📝 Transcription progress:")
             for segment in segments:
                 text = segment.text.strip()
                 transcript_segments.append({
@@ -131,18 +131,18 @@ class WhisperTranscriber:
                 'duration': info.duration if hasattr(info, 'duration') else 0,
             }
             
-            print(f"✅ 转录完成! 时长: {result['duration']:.1f}秒")
-            print(f"📊 文本长度: {len(result['text'])} 字符")
+            print(f"✅ Transcription complete! Duration: {result['duration']:.1f}s")
+            print(f"📊 Text length: {len(result['text'])} characters")
             
             return result
             
         except Exception as e:
-            raise Exception(f"转录失败: {str(e)}")
+            raise Exception(f"Transcription failed: {str(e)}")
     
     def unload_model(self):
         """Unload the model and release VRAM."""
         if self.model is not None:
-            print("🔄 释放 Whisper 模型...")
+            print("🔄 Releasing Whisper model...")
             del self.model
             self.model = None
             
@@ -154,7 +154,7 @@ class WhisperTranscriber:
                 torch.cuda.empty_cache()
                 torch.cuda.synchronize()
             
-            print("✅ 显存已释放")
+            print("✅ VRAM released")
             self._print_vram_usage()
     
     def __enter__(self):
@@ -189,12 +189,12 @@ if __name__ == "__main__":
     import sys
     
     if len(sys.argv) < 2:
-        print("用法: python transcriber.py <audio_file>")
+        print("Usage: python transcriber.py <audio_file>")
         sys.exit(1)
     
     audio_file = sys.argv[1]
     
     with WhisperTranscriber() as transcriber:
         result = transcriber.transcribe(audio_file)
-        print("\n=== 转录结果 ===")
+        print("\n=== Transcription Result ===")
         print(result['text'][:500] + "..." if len(result['text']) > 500 else result['text'])

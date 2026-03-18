@@ -23,7 +23,7 @@ try:
     USE_NOTION_CLIENT = True
 except ImportError:
     USE_NOTION_CLIENT = False
-    print("⚠️ notion_client 未安装，将使用 MockNotionWriter（仅本地保存 JSON）")
+    print("⚠️ notion_client is not installed. MockNotionWriter will be used for local JSON output only.")
 
 
 class NotionWriter:
@@ -48,11 +48,11 @@ class NotionWriter:
         self.database_id = database_id or os.getenv("NOTION_DATABASE_ID") or self._load_env(env_file, "NOTION_DATABASE_ID")
 
         if not self.token:
-            raise ValueError("未设置 NOTION_TOKEN")
+            raise ValueError("NOTION_TOKEN is not set")
         if not self.database_id:
-            raise ValueError("未设置 NOTION_DATABASE_ID")
+            raise ValueError("NOTION_DATABASE_ID is not set")
         if not USE_NOTION_CLIENT:
-            raise ValueError("notion_client 未安装（pip install notion-client）")
+            raise ValueError("notion_client is not installed (pip install notion-client)")
 
         self.client = Client(auth=self.token)
 
@@ -74,10 +74,10 @@ class NotionWriter:
     def test_connection(self) -> bool:
         try:
             self.client.databases.retrieve(database_id=self.database_id)
-            print("✅ Notion 连接成功")
+            print("✅ Notion connection successful")
             return True
         except Exception as e:
-            print(f"❌ Notion 连接失败: {e}")
+            print(f"❌ Notion connection failed: {e}")
             return False
 
     # -------------------- Core: create a page --------------------
@@ -102,7 +102,7 @@ class NotionWriter:
                 )
 
             page_id = page.get("id")
-            print(f"✅ 已创建 Notion 页面: {page_id or 'unknown'}")
+            print(f"✅ Created Notion page: {page_id or 'unknown'}")
 
             # Append remaining blocks if there are more than 100
             if children and len(children) > 100 and page_id:
@@ -111,7 +111,7 @@ class NotionWriter:
             return page
 
         except Exception as e:
-            raise Exception(f"创建 Notion 页面失败: {str(e)}")
+            raise Exception(f"Failed to create Notion page: {str(e)}")
 
     # -------------------- Properties: database columns --------------------
     def _build_properties(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -316,7 +316,7 @@ class NotionWriter:
             )
             return resp.get("results", [])
         except Exception as e:
-            raise Exception(f"查询失败: {str(e)}")
+            raise Exception(f"Query failed: {str(e)}")
 
     def check_duplicate(self, url: str) -> bool:
         """
@@ -338,10 +338,10 @@ class MockNotionWriter:
 
     def __init__(self, *args, **kwargs):
         self.data_store: List[Dict[str, Any]] = []
-        print("📝 使用 MockNotionWriter（测试模式，不会写入 Notion）")
+        print("📝 Using MockNotionWriter (test mode, nothing will be written to Notion)")
 
     def test_connection(self) -> bool:
-        print("✅ Mock 连接成功")
+        print("✅ Mock connection successful")
         return True
 
     def create_page(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -349,7 +349,7 @@ class MockNotionWriter:
         output_file = "notion_mock_output.json"
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(self.data_store, f, ensure_ascii=False, indent=2)
-        print(f"✅ 已保存到本地: {output_file}")
+        print(f"✅ Saved locally: {output_file}")
         return {"id": "mock-page-id", "data": data}
 
     def check_duplicate(self, url: str) -> bool:
@@ -368,7 +368,7 @@ def get_writer(token: Optional[str] = None, database_id: Optional[str] = None) -
     try:
         return NotionWriter(token=token, database_id=database_id)
     except Exception as e:
-        print(f"⚠️ NotionWriter 初始化失败: {e}，使用 Mock")
+        print(f"⚠️ NotionWriter initialization failed: {e}. Using Mock.")
         return MockNotionWriter()
 
 
