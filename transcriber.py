@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 🎙 Whisper Transcriber Module
-使用 faster-whisper 进行本地语音转文本
+Run local speech-to-text with faster-whisper
 """
 
 import gc
@@ -11,18 +11,18 @@ from faster_whisper import WhisperModel
 
 
 class WhisperTranscriber:
-    """本地 Whisper 转录器"""
+    """Local Whisper transcriber."""
     
-    # 模型配置 - small 模型适合 8GB 显存
+    # Model defaults: the small model is a good fit for 8GB VRAM
     MODEL_SIZE = "small"
-    COMPUTE_TYPE = "float16"  # float16 在 RTX 5060 上约占用 2GB
+    COMPUTE_TYPE = "float16"  # float16 uses about 2GB on an RTX 5060
     
     def __init__(self, model_path: Optional[str] = None, model_size: Optional[str] = None):
         """
-        初始化转录器
+        Initialize the transcriber.
         
         Args:
-            model_path: 自定义模型路径 (可选)
+            model_path: Custom model download path (optional)
             model_size: Whisper model size override
         """
         self.model = None
@@ -31,17 +31,17 @@ class WhisperTranscriber:
     
     def load_model(self, device: str = "cuda", compute_type: Optional[str] = None):
         """
-        加载 Whisper 模型
+        Load the Whisper model.
         
         Args:
-            device: 运行设备 ("cuda" 或 "cpu")
-            compute_type: 计算类型 (可选，默认根据设备自动选择)
+            device: Execution device ("cuda" or "cpu")
+            compute_type: Compute type (optional; auto-selected by device when omitted)
         """
         if self.model is not None:
             print("✅ 模型已加载")
             return
         
-        # 根据设备自动选择计算类型
+        # Select the compute type automatically based on the device
         if compute_type is None:
             compute_type = "float16" if device == "cuda" else "int8"
         
@@ -58,7 +58,7 @@ class WhisperTranscriber:
             )
             print("✅ 模型加载完成")
             
-            # 打印显存占用预估
+            # Print estimated VRAM usage
             self._print_vram_usage()
             
         except Exception as e:
@@ -66,7 +66,7 @@ class WhisperTranscriber:
             raise
     
     def _print_vram_usage(self):
-        """打印显存占用预估"""
+        """Print estimated VRAM usage."""
         if torch.cuda.is_available():
             allocated = torch.cuda.memory_allocated() / 1024**3
             reserved = torch.cuda.memory_reserved() / 1024**3
@@ -79,37 +79,37 @@ class WhisperTranscriber:
         task: str = "transcribe"
     ) -> Dict:
         """
-        转录音频文件
+        Transcribe an audio file.
         
         Args:
-            audio_path: 音频文件路径
-            language: 语言代码 (None = 自动检测)
-            task: "transcribe" 或 "translate"
+            audio_path: Audio file path
+            language: Language code (None = auto-detect)
+            task: "transcribe" or "translate"
             
         Returns:
-            包含文本、段落、语言信息的字典
+            A dictionary containing text, segments, and language metadata
         """
         if self.model is None:
             self.load_model()
         
         print(f"🎙️ 开始转录: {audio_path}")
         
-        # 自动检测语言 (默认优先中文)
+        # Auto-detect the language, with Chinese preferred by default
         if language is None:
-            language = "zh"  # 默认中文
+            language = "zh"  # Default to Chinese
         
         try:
-            # 执行转录
+            # Run transcription
             segments, info = self.model.transcribe(
                 audio_path,
                 language=language,
                 task=task,
                 beam_size=5,
-                vad_filter=True,  # 语音活动检测
+                vad_filter=True,  # Voice activity detection
                 vad_parameters=dict(min_silence_duration_ms=500)
             )
             
-            # 收集所有段落
+            # Collect all transcription segments
             transcript_segments = []
             full_text = []
             
@@ -140,16 +140,16 @@ class WhisperTranscriber:
             raise Exception(f"转录失败: {str(e)}")
     
     def unload_model(self):
-        """卸载模型并释放显存"""
+        """Unload the model and release VRAM."""
         if self.model is not None:
             print("🔄 释放 Whisper 模型...")
             del self.model
             self.model = None
             
-            # 强制垃圾回收
+            # Force garbage collection
             gc.collect()
             
-            # 清空 CUDA 缓存
+            # Clear the CUDA cache
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 torch.cuda.synchronize()
@@ -158,21 +158,21 @@ class WhisperTranscriber:
             self._print_vram_usage()
     
     def __enter__(self):
-        """上下文管理器入口"""
+        """Context manager entry point."""
         self.load_model()
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """上下文管理器出口 - 自动释放显存"""
+        """Context manager exit point that automatically releases VRAM."""
         self.unload_model()
 
 
 def get_vram_requirement(model_size: str = "small") -> Dict:
     """
-    获取各模型的显存需求预估
+    Get the estimated VRAM requirement for each model size.
     
     Returns:
-        显存需求字典
+        A dictionary describing VRAM requirements
     """
     requirements = {
         "tiny": {"vram": "~1GB", "speed": "最快", "accuracy": "最低"},
@@ -185,7 +185,7 @@ def get_vram_requirement(model_size: str = "small") -> Dict:
 
 
 if __name__ == "__main__":
-    # 测试转录
+    # Smoke test transcription
     import sys
     
     if len(sys.argv) < 2:

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 📝 Notion Writer Module (Full Script)
-- 将视频元数据写入 Notion 数据库 properties
-- 将超长 Transcript /（可选）Summary 写入页面正文 blocks，避免 2000 字符截断
-- 可选：保留 TranscriptPreview 字段（前 N 字），方便表格快速浏览
+- Write video metadata into Notion database properties
+- Write long Transcript / optional Summary content into page blocks to avoid the 2000-character limit
+- Optionally keep a TranscriptPreview field (first N characters) for quick table browsing
 """
 
 import os
@@ -14,10 +14,10 @@ from typing import Optional, Dict, List, Any
 
 from dotenv import load_dotenv
 
-# 加载 .env
+# Load .env
 load_dotenv()
 
-# Notion 客户端
+# Notion client
 try:
     from notion_client import Client
     USE_NOTION_CLIENT = True
@@ -27,15 +27,15 @@ except ImportError:
 
 
 class NotionWriter:
-    """Notion 数据库写入器（properties + page blocks）"""
+    """Notion database writer (properties + page blocks)."""
 
-    # =============== 你可以按需调整的开关 ===============
-    WRITE_TRANSCRIPT_TO_PAGE = True          # ✅ transcript 写入页面正文
-    WRITE_SUMMARY_TO_PAGE = False            # 可选：summary 也写入页面正文
-    KEEP_TRANSCRIPT_PROPERTY = False         # ❌ 不再写 Transcript 字段（避免截断）
-    KEEP_TRANSCRIPT_PREVIEW = False          # 可选：保留 TranscriptPreview（前 N 字）
-    TRANSCRIPT_PREVIEW_CHARS = 500           # TranscriptPreview 长度
-    USE_TOGGLE_FOR_TRANSCRIPT = True         # ✅ transcript 放到 Toggle 里（默认折叠）
+    # =============== Tunable switches ===============
+    WRITE_TRANSCRIPT_TO_PAGE = True          # ✅ Write transcript content into the page body
+    WRITE_SUMMARY_TO_PAGE = False            # Optional: also write the summary into the page body
+    KEEP_TRANSCRIPT_PROPERTY = False         # ❌ Stop writing the Transcript property to avoid truncation
+    KEEP_TRANSCRIPT_PREVIEW = False          # Optional: keep TranscriptPreview (first N characters)
+    TRANSCRIPT_PREVIEW_CHARS = 500           # TranscriptPreview length
+    USE_TOGGLE_FOR_TRANSCRIPT = True         # ✅ Put transcript content inside a collapsed toggle
     # ================================================
 
     def __init__(
@@ -80,14 +80,14 @@ class NotionWriter:
             print(f"❌ Notion 连接失败: {e}")
             return False
 
-    # -------------------- 核心：创建页面 --------------------
+    # -------------------- Core: create a page --------------------
     def create_page(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """创建 Notion 页面：properties + children（正文 blocks）"""
+        """Create a Notion page with properties and body blocks."""
         properties = self._build_properties(data)
         children = self._build_children(data)
 
         try:
-            # 先创建页面（children 先塞一部分，避免一次过多导致失败）
+            # Create the page first with an initial block batch to avoid oversized requests
             initial_children = children[:100] if children else None
             if initial_children:
                 page = self.client.pages.create(
@@ -104,7 +104,7 @@ class NotionWriter:
             page_id = page.get("id")
             print(f"✅ 已创建 Notion 页面: {page_id or 'unknown'}")
 
-            # 如果 children 很多，剩余部分再 append
+            # Append remaining blocks if there are more than 100
             if children and len(children) > 100 and page_id:
                 self._append_blocks(page_id, children[100:])
 
@@ -113,26 +113,26 @@ class NotionWriter:
         except Exception as e:
             raise Exception(f"创建 Notion 页面失败: {str(e)}")
 
-    # -------------------- properties：数据库列 --------------------
+    # -------------------- Properties: database columns --------------------
     def _build_properties(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        构建 Notion 页面属性
-        - Name: title（页面主标题）
-        - Title: rich_text（辅助标题/原始标题/ID）
-        - URL: rich_text（你当前数据库就是 rich_text 类型）
-        - 其它：Platform/Tags/Category/Sentiment/Summary/KeyPoints/CreatedTime
-        - Transcript 字段默认不写（避免截断），可通过开关保留
+        Build Notion page properties.
+        - Name: title (the main page title)
+        - Title: rich_text (auxiliary title / source title / ID)
+        - URL: rich_text (matches the current database schema)
+        - Others: Platform/Tags/Category/Sentiment/Summary/KeyPoints/CreatedTime
+        - Transcript is skipped by default to avoid truncation, but can be enabled
         """
         properties: Dict[str, Any] = {}
 
-        # 1) Name（title，Notion 页面主标题）
+        # 1) Name (title, the primary Notion page title)
         title = str(data.get("title") or "").strip()
         if not title:
             fallback = data.get("video_id") or data.get("id") or "Untitled"
             title = str(fallback)
         properties["Name"] = {"title": [{"text": {"content": title[:100]}}]}
 
-        # 2) Title（rich_text：原始标题/来源ID/备用标题）
+        # 2) Title (rich_text: raw title / source ID / fallback title)
         platform = str(data.get("platform") or "").strip()
         aux_title = str(data.get("raw_title") or data.get("source_title") or "").strip()
         if not aux_title and platform:
@@ -142,21 +142,21 @@ class NotionWriter:
 
         properties["Title"] = {"rich_text": [{"text": {"content": aux_title[:2000]}}]}
 
-        # 3) URL（你现在数据库 URL 是 rich_text 类型）
+        # 3) URL (the current database schema uses rich_text)
         url = str(data.get("url") or "").strip()
         if url:
             properties["URL"] = {"rich_text": [{"text": {"content": url}}]}
 
-        # 4) Platform（select）
+        # 4) Platform (select)
         if platform:
             properties["Platform"] = {"select": {"name": platform[:50]}}
 
-        # 5) Summary（rich_text，<=2000）
+        # 5) Summary (rich_text, <= 2000 characters)
         summary = str(data.get("summary") or "").strip()
         if summary:
             properties["Summary"] = {"rich_text": [{"text": {"content": summary[:2000]}}]}
 
-        # 6) Tags（multi_select）
+        # 6) Tags (multi_select)
         tags = data.get("tags")
         if tags:
             if isinstance(tags, str):
@@ -168,7 +168,7 @@ class NotionWriter:
             if tag_list:
                 properties["Tags"] = {"multi_select": [{"name": t[:50]} for t in tag_list]}
 
-        # 7) KeyPoints（rich_text）
+        # 7) KeyPoints (rich_text)
         key_points = data.get("key_points")
         if key_points:
             if isinstance(key_points, list):
@@ -177,7 +177,7 @@ class NotionWriter:
                 key_points_text = str(key_points)
             properties["KeyPoints"] = {"rich_text": [{"text": {"content": key_points_text[:2000]}}]}
 
-        # 8) Category / Sentiment（select）
+        # 8) Category / Sentiment (select)
         category = str(data.get("category") or "").strip()
         if category:
             properties["Category"] = {"select": {"name": category[:50]}}
@@ -186,16 +186,16 @@ class NotionWriter:
         if sentiment:
             properties["Sentiment"] = {"select": {"name": sentiment[:20]}}
 
-        # 9) CreatedTime（date）
+        # 9) CreatedTime (date)
         properties["CreatedTime"] = {"date": {"start": datetime.now().isoformat()}}
 
-        # 10) Transcript 字段（不推荐，默认关闭；如需保留自行开关）
+        # 10) Transcript property (not recommended, disabled by default)
         transcript = str(data.get("transcript") or "").strip()
         if transcript and self.KEEP_TRANSCRIPT_PROPERTY:
-            # 注意：这里仍然会被截断
+            # Note: this content can still be truncated
             properties["Transcript"] = {"rich_text": [{"text": {"content": transcript[:2000]}}]}
 
-        # 11) TranscriptPreview（可选，需要你在 Notion 数据库新增一个 Text 列：TranscriptPreview）
+        # 11) TranscriptPreview (optional; requires a matching Text column in Notion)
         if transcript and self.KEEP_TRANSCRIPT_PREVIEW:
             properties["TranscriptPreview"] = {
                 "rich_text": [{"text": {"content": transcript[: self.TRANSCRIPT_PREVIEW_CHARS]}}]
@@ -203,11 +203,11 @@ class NotionWriter:
 
         return properties
 
-    # -------------------- children：页面正文 blocks --------------------
+    # -------------------- Children: page body blocks --------------------
     def _build_children(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
         children: List[Dict[str, Any]] = []
 
-        # 可选：把 Summary 放正文里（更舒服阅读）
+        # Optional: place the summary in the page body for easier reading
         summary = str(data.get("summary") or "").strip()
         if summary and self.WRITE_SUMMARY_TO_PAGE:
             children.append(self._heading_2("Summary"))
@@ -216,7 +216,7 @@ class NotionWriter:
         transcript = str(data.get("transcript") or "").strip()
         if transcript and self.WRITE_TRANSCRIPT_TO_PAGE:
             if self.USE_TOGGLE_FOR_TRANSCRIPT:
-                # Toggle 内嵌 transcript blocks（默认折叠）
+                # Nest transcript blocks inside a toggle (collapsed by default)
                 toggle_children = self._paragraph_blocks(transcript)
                 children.append(self._toggle("Transcript", toggle_children))
             else:
@@ -226,7 +226,7 @@ class NotionWriter:
         return children
 
     def _append_blocks(self, page_id: str, blocks: List[Dict[str, Any]]) -> None:
-        """分批追加 blocks，避免单次请求过大"""
+        """Append blocks in batches to avoid oversized requests."""
         if not blocks:
             return
         batch_size = 100
@@ -249,22 +249,22 @@ class NotionWriter:
         }
 
     def _toggle(self, title: str, children: List[Dict[str, Any]]) -> Dict[str, Any]:
-        # 注意：toggle 的 children 同样可能很多；create_page 时我们会分批 append
-        # 这里先放在 toggle 里，Notion 允许 toggle 有 children
+        # Note: toggle children may also be large; create_page appends in batches
+        # Put the first batch inside the toggle because Notion supports nested children
         return {
             "object": "block",
             "type": "toggle",
             "toggle": {
                 "rich_text": self._rt(title[:2000]),
-                "children": children[:100],  # 先塞一部分，剩余会在 page append 阶段追加到页面末尾（简化实现）
+                "children": children[:100],  # Seed the first batch; append the rest later at the page level
             },
         }
 
     def _paragraph_blocks(self, text: str) -> List[Dict[str, Any]]:
         """
-        把长文本拆成多个 paragraph blocks。
-        - 每个 paragraph content 建议 <= 1800，留余量更稳
-        - 空行会强制换段
+        Split long text into multiple paragraph blocks.
+        - Keep each paragraph content <= 1800 characters for safety
+        - Blank lines force a paragraph break
         """
         max_len = 1800
         lines = text.splitlines()
@@ -293,7 +293,7 @@ class NotionWriter:
                 buf = (buf + "\n" + line) if buf else line
             else:
                 flush()
-                # 单行过长则硬切
+                # Hard-split lines that are too long
                 while len(line) > max_len:
                     chunk, line = line[:max_len], line[max_len:]
                     blocks.append({
@@ -306,7 +306,7 @@ class NotionWriter:
         flush()
         return blocks
 
-    # -------------------- 查询 / 去重 --------------------
+    # -------------------- Query / deduplication --------------------
     def query_database(self, filter_dict: Optional[Dict] = None, page_size: int = 100) -> List[Dict]:
         try:
             resp = self.client.databases.query(
@@ -320,8 +320,8 @@ class NotionWriter:
 
     def check_duplicate(self, url: str) -> bool:
         """
-        检查 URL 是否已存在（去重）
-        你现在 URL 列是 rich_text 类型，所以用 rich_text equals
+        Check whether the URL already exists to avoid duplicates.
+        The current URL column uses rich_text, so we query with rich_text.equals.
         """
         try:
             results = self.query_database({
@@ -334,7 +334,7 @@ class NotionWriter:
 
 
 class MockNotionWriter:
-    """Mock 写入器（用于 notion_client 不可用时：本地保存 JSON）"""
+    """Mock writer used when notion_client is unavailable; saves JSON locally."""
 
     def __init__(self, *args, **kwargs):
         self.data_store: List[Dict[str, Any]] = []
@@ -358,9 +358,9 @@ class MockNotionWriter:
 
 def get_writer(token: Optional[str] = None, database_id: Optional[str] = None) -> Any:
     """
-    获取 Writer 实例
-    - notion_client 可用且 token/database_id 有效 => NotionWriter
-    - 否则 => MockNotionWriter
+    Get a writer instance.
+    - If notion_client is available and token/database_id are valid => NotionWriter
+    - Otherwise => MockNotionWriter
     """
     if not USE_NOTION_CLIENT:
         return MockNotionWriter()
@@ -373,11 +373,11 @@ def get_writer(token: Optional[str] = None, database_id: Optional[str] = None) -
 
 
 if __name__ == "__main__":
-    # ======= 示例：真实写入 Notion 时，把下面两行注释取消，并确保 .env 配好 =======
+    # ======= Example: uncomment the next two lines for a real Notion write, and make sure .env is configured =======
     # writer = NotionWriter()
     # writer.test_connection()
 
-    # ======= 示例：本地测试（Mock） =======
+    # ======= Example: local test with the mock writer =======
     writer = MockNotionWriter()
 
     test_data = {

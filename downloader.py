@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 🎬 Video Downloader Module
-使用 yt-dlp 下载视频音频
-支持小红书图文笔记抓取
+Download video/audio with yt-dlp
+Support scraping Xiaohongshu image-text notes
 """
 
 import os
@@ -16,14 +16,14 @@ from typing import Optional, Dict
 
 
 def get_yt_dlp_path() -> str:
-    """获取 yt-dlp 路径"""
-    # 检查 venv 中是否有 yt-dlp
+    """Get the yt-dlp executable path."""
+    # Check whether yt-dlp exists inside the virtual environment
     venv_dir = Path(sys.executable).parent
     yt_dlp_venv = venv_dir / "yt-dlp.exe"
     if yt_dlp_venv.exists():
         return str(yt_dlp_venv)
     
-    # 尝试直接调用
+    # Fall back to calling it directly from PATH
     return "yt-dlp"
 
 
@@ -45,9 +45,9 @@ def run_command(cmd: list[str], timeout: int) -> subprocess.CompletedProcess:
 
 
 class VideoDownloader:
-    """视频下载器 - 仅下载音频流"""
+    """Video downloader with audio-first behavior."""
     
-    # 支持的平台域名映射
+    # Supported platform domain mapping
     PLATFORMS = {
         'youtube.com': 'YouTube',
         'youtu.be': 'YouTube',
@@ -63,46 +63,46 @@ class VideoDownloader:
     
     def __init__(self, output_dir: str = "downloads"):
         """
-        初始化下载器
+        Initialize the downloader.
         
         Args:
-            output_dir: 音频输出目录
+            output_dir: Audio output directory
         """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
     
     def detect_platform(self, url: str) -> str:
-        """检测视频平台"""
+        """Detect the target video platform."""
         for domain, platform in self.PLATFORMS.items():
             if domain in url.lower():
                 return platform
         return 'Unknown'
     
     def get_output_path(self, url: str, platform: str) -> Path:
-        """生成输出文件路径"""
-        # 使用 URL hash 作为文件名，避免特殊字符问题
+        """Generate the output file path."""
+        # Use the URL hash as the filename to avoid special-character issues
         import hashlib
         url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
         
-        # 小红书用 mp4，其他用 m4a
+        # Xiaohongshu uses mp4; other platforms use m4a
         ext = 'mp4' if platform == 'Xiaohongshu' else 'm4a'
         return self.output_dir / f"{platform}_{url_hash}.{ext}"
     
     def download(self, url: str, force: bool = False) -> Dict:
         """
-        下载视频音频
+        Download video audio.
         
         Args:
-            url: 视频链接
-            force: 是否强制重新下载
+            url: Video URL
+            force: Whether to force a fresh download
             
         Returns:
-            包含音频路径、平台、视频标题的字典
+            A dictionary containing the audio path, platform, and video title
         """
         platform = self.detect_platform(url)
         output_path = self.get_output_path(url, platform)
         
-        # 如果文件已存在且不强制下载，直接返回
+        # Return immediately if the file already exists and re-download is not forced
         if output_path.exists() and not force:
             print(f"📁 文件已存在: {output_path}")
             return {
@@ -117,9 +117,9 @@ class VideoDownloader:
         
         yt_dlp = get_yt_dlp_path()
         
-        # ========== 平台特定配置 ==========
+        # ========== Platform-specific settings ==========
         if platform == 'Xiaohongshu':
-            # 小红书：下载完整视频（保留视频轨道）
+            # Xiaohongshu: download the full video and keep the video track
             cmd = [
                 yt_dlp,
                 '-f', 'best',
@@ -128,7 +128,7 @@ class VideoDownloader:
                 url
             ]
         elif platform == 'Bilibili':
-            # B站：下载音频
+            # Bilibili: download audio only
             cmd = [
                 yt_dlp,
                 '-f', 'bestaudio',
@@ -138,7 +138,7 @@ class VideoDownloader:
                 url
             ]
         else:
-            # YouTube 等平台：下载音频
+            # YouTube and other platforms: download audio only
             cmd = [
                 yt_dlp,
                 '-f', 'bestaudio',
@@ -154,7 +154,7 @@ class VideoDownloader:
             if result.returncode != 0:
                 raise Exception(f"下载失败: {result.stderr}")
             
-            # 获取视频标题
+            # Retrieve the video title
             title = self._get_title(url) or output_path.stem
             
             print(f"✅ 下载完成: {output_path.name}")
@@ -174,7 +174,7 @@ class VideoDownloader:
             raise Exception(f"下载失败: {str(e)}")
     
     def _get_title(self, url: str) -> Optional[str]:
-        """获取视频标题"""
+        """Get the video title."""
         try:
             cmd = [
                 get_yt_dlp_path(),
@@ -185,15 +185,15 @@ class VideoDownloader:
             result = run_command(cmd, timeout=30)
             if result.returncode == 0:
                 title = result.stdout.strip()
-                # 清理标题中的非法文件名字符
+                # Remove characters that are invalid in filenames
                 title = re.sub(r'[<>:"/\\|?*]', '_', title)
-                return title[:100]  # 限制长度
+                return title[:100]  # Keep the filename length bounded
         except:
             pass
         return None
     
     def cleanup(self, audio_path: str):
-        """删除临时音频文件"""
+        """Delete the temporary audio file."""
         try:
             if os.path.exists(audio_path):
                 os.remove(audio_path)
@@ -203,17 +203,17 @@ class VideoDownloader:
 
     def scrape_xiaohongshu(self, url: str) -> Dict:
         """
-        抓取小红书图文笔记内容
+        Scrape Xiaohongshu image-text note content.
         
         Args:
-            url: 小红书链接
+            url: Xiaohongshu URL
             
         Returns:
-            包含标题、描述、图片、评论的字典
+            A dictionary containing the title, description, images, and comments
         """
         print("📝 未检测到视频，尝试抓取图文内容...")
         
-        # 尝试方法1: 用 yt-dlp --dump-json 获取元数据
+        # Attempt 1: use yt-dlp --dump-json to fetch metadata
         try:
             yt_dlp = get_yt_dlp_path()
             cmd = [yt_dlp, '--dump-json', '--no-download', url]
@@ -227,7 +227,7 @@ class VideoDownloader:
                 description = data.get('description', '') or data.get('title', '')
                 uploader = data.get('uploader', '未知作者')
                 
-                # 尝试获取图片
+                # Try to collect image URLs
                 images = []
                 if 'thumbnails' in data:
                     for thumb in data.get('thumbnails', []):
@@ -249,7 +249,7 @@ class VideoDownloader:
         except Exception as e:
             print(f"⚠️ yt-dlp 方法失败: {e}")
         
-        # 尝试方法2: 直接请求网页解析
+        # Attempt 2: request and parse the webpage directly
         try:
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -257,11 +257,11 @@ class VideoDownloader:
             }
             response = requests.get(url, headers=headers, timeout=30)
             
-            # 从 HTML 中提取 JSON 数据
+            # Extract JSON data from the HTML
             json_match = re.search(r'window\.__INITIAL_STATE__\s*=\s*(\{.*?\});', response.text, re.DOTALL)
             if json_match:
                 data = json.loads(json_match.group(1))
-                # 解析 note 数据...
+                # Parse the note payload...
                 print("✅ 图文抓取成功(网页解析)")
         except Exception as e:
             print(f"⚠️ 网页解析失败: {e}")
@@ -270,27 +270,27 @@ class VideoDownloader:
     
     def download_or_scrape(self, url: str, force: bool = False) -> Dict:
         """
-        下载视频，失败则抓取图文
+        Download the video, or scrape image-text content on failure.
         
         Args:
-            url: 链接
-            force: 是否强制重新下载
+            url: Target URL
+            force: Whether to force a fresh download
             
         Returns:
-            包含音频路径或图文内容的字典
+            A dictionary containing either the audio path or image-text content
         """
         platform = self.detect_platform(url)
         
-        # 小红书：先尝试获取元数据，判断是视频还是图文
+        # Xiaohongshu: inspect metadata first to determine video vs. image-text
         if platform == 'Xiaohongshu':
-            # 先用 --dump-json 获取信息，判断内容类型
+            # Use --dump-json first to determine the content type
             try:
                 result = self._get_xiaohongshu_info(url)
                 if result.get('has_video', True):
-                    # 有视频，用普通下载
+                    # Video present: proceed with the normal download flow
                     return self.download(url, force)
                 else:
-                    # 无视频，返回图文内容
+                    # No video: return the image-text payload
                     print("📝 检测为图文笔记")
                     return result
             except Exception as e:
@@ -298,33 +298,33 @@ class VideoDownloader:
                 try:
                     return self.download(url, force)
                 except:
-                    # 下载失败，尝试抓取图文
+                    # Download failed, so fall back to scraping image-text content
                     print("💡 尝试抓取图文内容...")
                     return self.scrape_xiaohongshu(url)
         
-        # X (Twitter)：先尝试下载，失败则抓取图文
+        # X (Twitter): try download first, then fall back to scraping
         if platform == 'X':
             try:
                 return self.download(url, force)
             except Exception as e:
                 error_msg = str(e)
-                # 检查是否是"没有视频"的错误
+                # Check whether this is specifically a "no video" error
                 if 'No video could be found' in error_msg or 'No media found' in error_msg:
                     print("💡 该帖子没有视频，尝试抓取文字和图片...")
                     return self.scrape_x_tweet(url)
                 else:
-                    # 其他错误，也尝试抓取图文
+                    # For other errors, still try scraping the post content
                     print(f"⚠️ 下载失败: {e}，尝试抓取帖子内容...")
                     try:
                         return self.scrape_x_tweet(url)
                     except:
-                        raise  # 如果抓取也失败，抛出原错误
+                        raise  # If scraping also fails, re-raise the original error
         
-        # 其他平台直接下载
+        # Other platforms go through the normal download flow
         return self.download(url, force)
     
     def _get_xiaohongshu_info(self, url: str) -> Dict:
-        """获取小红书笔记信息（判断是否有视频）"""
+        """Get Xiaohongshu note metadata and determine whether it includes video."""
         yt_dlp = get_yt_dlp_path()
         cmd = [yt_dlp, '--dump-json', '--no-download', '--skip-download', url]
 
@@ -337,10 +337,10 @@ class VideoDownloader:
             description = data.get('description', '') or data.get('title', '')
             uploader = data.get('uploader', '未知作者')
 
-            # 判断是否有视频流
+            # Determine whether a video stream is present
             has_video = bool(data.get('formats')) or data.get('duration', 0) > 0
 
-            # 获取图片
+            # Collect image URLs
             images = []
             for thumb in data.get('thumbnails', []):
                 if 'url' in thumb:
@@ -361,24 +361,24 @@ class VideoDownloader:
 
     def scrape_x_tweet(self, url: str) -> Dict:
         """
-        抓取 X (Twitter) 帖子内容（文字 + 图片）
+        Scrape X (Twitter) post content, including text and images.
         
         Args:
-            url: X 帖子链接
+            url: X post URL
             
         Returns:
-            包含文字内容、图片的字典
+            A dictionary containing the text content and images
         """
         print("📝 检测为 X 帖子，尝试抓取内容...")
         
-        # 提取 tweet ID 和用户名
+        # Extract the tweet ID and username
         tweet_id_match = re.search(r'/(?:status|i)/(\d+)', url)
         username_match = re.search(r'x\.com/([^/]+)/status', url)
         
         tweet_id = tweet_id_match.group(1) if tweet_id_match else None
         username = username_match.group(1) if username_match else None
         
-        # 方法1: 尝试 vxtwitter.com API (最简单可靠)
+        # Method 1: try the vxtwitter.com API (the simplest and most reliable option)
         if tweet_id and username:
             try:
                 print(f"🔄 尝试 vxtwitter API...")
@@ -388,7 +388,7 @@ class VideoDownloader:
                     data = response.json()
                     description = data.get('text', '')
                     if description:
-                        # 获取图片
+                        # Collect image URLs
                         images = data.get('media_urls', [])
                         result_dict = {
                             'type': 'image_text',
@@ -404,7 +404,7 @@ class VideoDownloader:
             except Exception as e:
                 print(f"⚠️ vxtwitter 失败: {e}")
         
-        # 方法2: 尝试 fxtwitter.com API
+        # Method 2: try the fxtwitter.com API
         if tweet_id and username:
             try:
                 print(f"🔄 尝试 fxtwitter API...")
@@ -415,7 +415,7 @@ class VideoDownloader:
                     tweet_data = data.get('tweet', {})
                     description = tweet_data.get('text', '')
                     if description:
-                        # 获取媒体
+                        # Collect photo media
                         images = []
                         media = tweet_data.get('media', [])
                         for m in media:
@@ -440,10 +440,10 @@ class VideoDownloader:
 
 
 if __name__ == "__main__":
-    # 测试下载
+    # Download smoke test
     downloader = VideoDownloader()
     
-    # 测试 URL
+    # Test URL
     test_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
     
     try:
