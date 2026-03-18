@@ -8,6 +8,12 @@ import os
 import sys
 from pathlib import Path
 
+# Fix Windows UTF-8 output
+if sys.platform == "win32":
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 # 加载 .env 文件
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
@@ -242,26 +248,87 @@ class VideoPipeline:
                 self.logger.info("\n📍 Step 2: 语音转文本 (Whisper)")
                 self.logger.info("-" * 30)
                 
-                # 加载 Whisper 模型
-                self.transcriber.load_model(device="cuda")
+                # 错误重试 + 自动降级
+                max_retries = 3
+                retry_delay = 5  # 秒
+                last_error = None
+                transcript_result = None
                 
-                # 执行转录
-                transcript_result = self.transcriber.transcribe(
-                    audio_path,
-                    language=Config.TRANSCRIBE_LANGUAGE
-                )
+                for attempt in range(max_retries):
+                    try:
+                        # 尝试 CUDA
+                        self.logger.info(f"🔄 尝试加载 Whisper (CUDA) - 尝试 {attempt + 1}/{max_retries}")
+                        self.transcriber.load_model(device="cuda")
+                        
+                        # 执行转录
+                        transcript_result = self.transcriber.transcribe(
+                            audio_path,
+                            language=Config.TRANSCRIBE_LANGUAGE
+                        )
+                        
+                        # 卸载模型释放显存
+                        self.transcriber.unload_model()
+                        
+                        result['steps']['transcribe'] = {
+                            'status': 'success',
+                            'text_length': len(transcript_result['text']),
+                            'duration': transcript_result['duration'],
+                            'language': transcript_result['language'],
+                            'device': 'cuda'
+                        }
+                        result['transcript'] = transcript_result['text']
+                        self._save_checkpoint(result)
+                        break  # 成功，跳出重试循环
+                        
+                    except Exception as cuda_error:
+                        last_error = cuda_error
+                        self.logger.warning(f"⚠️ CUDA 转录失败: {cuda_error}")
+                        self.transcriber.unload_model()
+                        
+                        # 尝试降级到 CPU
+                        try:
+                            self.logger.info("🔄 尝试降级到 CPU...")
+                            self.transcriber.load_model(device="cpu", compute_type="int8")
+                            
+                            transcript_result = self.transcriber.transcribe(
+                                audio_path,
+                                language=Config.TRANSCRIBE_LANGUAGE
+                            )
+                            
+                            self.transcriber.unload_model()
+                            
+                            result['steps']['transcribe'] = {
+                                'status': 'success',
+                                'text_length': len(transcript_result['text']),
+                                'duration': transcript_result['duration'],
+                                'language': transcript_result['language'],
+                                'device': 'cpu'
+                            }
+                            result['transcript'] = transcript_result['text']
+                            self._save_checkpoint(result)
+                            self.logger.info("✅ CPU 转录成功!")
+                            break
+                            
+                        except Exception as cpu_error:
+                            last_error = cpu_error
+                            self.logger.warning(f"⚠️ CPU 转录也失败: {cpu_error}")
+                            self.transcriber.unload_model()
+                        
+                        # 如果不是最后一次尝试，等待后重试
+                        if attempt < max_retries - 1:
+                            self.logger.info(f"⏳ {retry_delay}秒后重试...")
+                            import time
+                            time.sleep(retry_delay)
+                            retry_delay *= 2  # 指数退避
                 
-                # 卸载模型释放显存
-                self.transcriber.unload_model()
-                
-                result['steps']['transcribe'] = {
-                    'status': 'success',
-                    'text_length': len(transcript_result['text']),
-                    'duration': transcript_result['duration'],
-                    'language': transcript_result['language']
-                }
-                result['transcript'] = transcript_result['text']
-                self._save_checkpoint(result)
+                else:
+                    # 所有重试都失败
+                    self.logger.error(f"❌ 转录重试{max_retries}次后仍失败: {last_error}")
+                    result['steps']['transcribe'] = {
+                        'status': 'error',
+                        'error': str(last_error)
+                    }
+                    raise last_error
             else:
                 self.logger.info("⏭️ 跳过转录步骤")
             
@@ -295,13 +362,14 @@ class VideoPipeline:
                 
                 result['steps']['summarize'] = {
                     'status': 'success',
-                    'model': Config.LLM_MODEL
+                    'model': self.summarizer.model
                 }
                 result['summary'] = summary_result['summary']
                 result['key_points'] = summary_result['key_points']
                 result['tags'] = summary_result['tags']
                 result['category'] = summary_result.get('category', '未分类')
                 result['sentiment'] = summary_result.get('sentiment', 'neutral')
+                result['language'] = summary_result.get('language', 'zh')
                 self._save_checkpoint(result)
             else:
                 self.logger.info("⏭️ 跳过摘要步骤")

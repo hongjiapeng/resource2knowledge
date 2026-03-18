@@ -13,6 +13,25 @@ from typing import Optional, Dict, List
 
 class Summarizer:
     """本地 LLM 摘要生成器"""
+
+    RESPONSE_SCHEMA = {
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string"},
+            "key_points": {
+                "type": "array",
+                "items": {"type": "string"}
+            },
+            "tags": {
+                "type": "array",
+                "items": {"type": "string"}
+            },
+            "category": {"type": "string"},
+            "sentiment": {"type": "string"},
+            "language": {"type": "string"}
+        },
+        "required": ["summary", "key_points", "tags", "category", "sentiment", "language"]
+    }
     
     # 按优先级排列的模型关键词（越靠前越优先）
     # 格式：(匹配关键词列表, 显示名, vram)
@@ -49,7 +68,8 @@ class Summarizer:
 - key_points 提取最重要的 5 个要点
 - tags 基于内容自动生成相关标签
 - category 使用简短的中文分类
-- 直接输出 JSON，不要其他内容"""
+- 直接输出 JSON，不要其他内容
+- 不要输出 markdown 代码块"""
 
     # 图文内容分析 prompt
     IMAGE_TEXT_PROMPT = """你是一个专业的小红书内容分析师。你的任务是对图文笔记内容进行分析总结。
@@ -69,11 +89,17 @@ class Summarizer:
 - key_points 提取最重要的 5 个要点
 - tags 基于内容自动生成相关标签
 - category 使用简短的中文分类
-- 直接输出 JSON，不要其他内容"""
+- 直接输出 JSON，不要其他内容
+- 不要输出 markdown 代码块"""
 
     @classmethod
     def detect_model(cls) -> str:
         """从已安装的 Ollama 模型中自动选择最优模型"""
+        # 先尝试环境变量中的模型
+        import os
+        primary_model = os.getenv("LLM_MODEL")
+        fallback_model = os.getenv("LLM_MODEL_FALLBACK")
+        
         try:
             raw = getattr(ollama.list(), 'models', None) or ollama.list().get('models', [])
             installed = []
@@ -84,11 +110,26 @@ class Summarizer:
                     installed.append(name)
 
             if not installed:
-                return cls.FALLBACK_MODEL
+                return fallback_model or cls.FALLBACK_MODEL
 
             print(f"📋 已安装模型: {installed}")
-
-            # 按优先级逐一匹配
+            
+            # 优先使用环境变量中指定的主模型
+            if primary_model and primary_model != "auto":
+                for name in installed:
+                    if primary_model.lower() in name.lower():
+                        print(f"✅ 使用配置的主模型: {name}")
+                        return name
+                # 主模型未安装，尝试备用模型
+                if fallback_model:
+                    for name in installed:
+                        if fallback_model.lower() in name.lower():
+                            print(f"⚠️ 主模型未安装，使用备用模型: {name}")
+                            return name
+                    # 备用模型也未安装
+                    print(f"⚠️ 主模型和备用模型都未安装，自动选择")
+            
+            # 自动选择 - 按优先级逐一匹配
             for keywords, label, _ in cls.MODEL_PRIORITY:
                 for name in installed:
                     name_lower = name.lower()
@@ -101,8 +142,8 @@ class Summarizer:
             return installed[0]
 
         except Exception as e:
-            print(f"⚠️ 自动检测模型失败: {e}，使用默认: {cls.FALLBACK_MODEL}")
-            return cls.FALLBACK_MODEL
+            print(f"⚠️ 自动检测模型失败: {e}，使用默认: {fallback_model or cls.FALLBACK_MODEL}")
+            return fallback_model or cls.FALLBACK_MODEL
 
     def __init__(self, model: Optional[str] = None):
         """
@@ -112,6 +153,69 @@ class Summarizer:
             model: Ollama 模型名称，不传则自动检测
         """
         self.model = model or self.detect_model()
+
+    def _build_prompt(self, system_prompt: str, content_label: str, transcript: str) -> str:
+        """构建统一 prompt，明确要求仅返回 JSON。"""
+        return (
+            f"{system_prompt}\n\n"
+            f"以下是{content_label}:\n\n{transcript}\n\n"
+            "请严格返回一个 JSON 对象，不要附加解释、前后缀文本或 markdown 代码块。"
+        )
+
+    def _normalize_result(self, result: Dict) -> Dict:
+        """标准化模型返回结构，避免缺字段导致上层报错。"""
+        return {
+            'summary': result.get('summary', ''),
+            'key_points': result.get('key_points', []),
+            'tags': result.get('tags', []),
+            'category': result.get('category', '未分类'),
+            'sentiment': result.get('sentiment', 'neutral'),
+            'language': result.get('language', 'zh'),
+        }
+
+    def _parse_json_response(self, response_text: str) -> Dict:
+        """从模型响应中提取第一个合法 JSON 对象。"""
+        text = response_text.strip()
+        if not text:
+            raise ValueError("模型返回为空")
+
+        decoder = json.JSONDecoder()
+        for index, char in enumerate(text):
+            if char != '{':
+                continue
+            try:
+                parsed, _ = decoder.raw_decode(text[index:])
+                if isinstance(parsed, dict):
+                    return parsed
+            except json.JSONDecodeError:
+                continue
+
+        raise ValueError("无法从响应中提取合法 JSON 对象")
+
+    def _generate_structured(self, model: str, prompt_text: str) -> Dict:
+        """优先使用 Ollama 的结构化输出能力。"""
+        response = ollama.generate(
+            model=model,
+            prompt=prompt_text,
+            format=self.RESPONSE_SCHEMA,
+            options={
+                "temperature": 0,
+                "num_predict": 1000,
+            }
+        )
+        return self._parse_json_response(response.response)
+
+    def _generate_unstructured(self, model: str, prompt_text: str) -> Dict:
+        """结构化输出失败时，退回纯文本并自行提取 JSON。"""
+        response = ollama.generate(
+            model=model,
+            prompt=prompt_text,
+            options={
+                "temperature": 0,
+                "num_predict": 1000,
+            }
+        )
+        return self._parse_json_response(response.response)
     
     def check_ollama(self) -> bool:
         """检查 Ollama 服务是否可用"""
@@ -197,35 +301,42 @@ class Summarizer:
             content_label = "视频转录文本"
         
         print(f"🧠 开始生成摘要 (模型: {self.model}, 类型: {content_type})")
-        
+
+        import os
+        fallback_model = os.getenv("LLM_MODEL_FALLBACK")
+        prompt_text = self._build_prompt(system_prompt, content_label, transcript)
+
+        model_candidates = [self.model]
+        if fallback_model and fallback_model not in model_candidates:
+            model_candidates.append(fallback_model)
+
+        errors = []
+
+        for model_name in model_candidates:
+            self.model = model_name
+
+            try:
+                result = self._generate_structured(model_name, prompt_text)
+                print(f"✅ 摘要生成完成 (结构化输出: {model_name})")
+                return self._normalize_result(result)
+            except Exception as structured_error:
+                errors.append(f"{model_name} structured: {structured_error}")
+                print(f"⚠️ 模型 {model_name} 结构化输出失败: {structured_error}")
+
+            try:
+                result = self._generate_unstructured(model_name, prompt_text)
+                print(f"✅ 摘要生成完成 (文本提取 JSON: {model_name})")
+                return self._normalize_result(result)
+            except Exception as unstructured_error:
+                errors.append(f"{model_name} text: {unstructured_error}")
+                print(f"⚠️ 模型 {model_name} 文本提取 JSON 失败: {unstructured_error}")
+
         try:
-            response = ollama.generate(
-                model=self.model,
-                prompt=f"{system_prompt}\n\n以下是{content_label}:\n\n{transcript}",
-                format="json",
-                options={
-                    "temperature": 0.3,  # 低温度，更确定性的输出
-                    "num_predict": 1000,
-                }
-            )
-            
-            result = json.loads(response.response)
-            
-            print("✅ 摘要生成完成")
-            return {
-                'summary': result.get('summary', ''),
-                'key_points': result.get('key_points', []),
-                'tags': result.get('tags', []),
-                'category': result.get('category', '未分类'),
-                'sentiment': result.get('sentiment', 'neutral'),
-                'language': result.get('language', 'zh'),
-            }
-            
-        except json.JSONDecodeError as e:
-            print(f"⚠️ JSON 解析失败，使用备用方法")
+            print("⚠️ 结构化输出和 JSON 提取均失败，使用备用摘要方法")
             return self._fallback_summarize(transcript)
-        except Exception as e:
-            raise Exception(f"摘要生成失败: {str(e)}")
+        except Exception as fallback_error:
+            errors.append(f"fallback summary: {fallback_error}")
+            raise Exception("摘要生成失败: " + " | ".join(errors))
     
     def _fallback_summarize(self, transcript: str) -> Dict:
         """备用摘要方法 (当 JSON 解析失败时)"""

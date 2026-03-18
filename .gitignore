@@ -35,3 +35,5 @@ Thumbs.db
 
 # Output
 notion_mock_output.json
+output/
+outputs/

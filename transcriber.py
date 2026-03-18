@@ -27,26 +27,31 @@ class WhisperTranscriber:
         self.model = None
         self.model_path = model_path
     
-    def load_model(self, device: str = "cuda"):
+    def load_model(self, device: str = "cuda", compute_type: Optional[str] = None):
         """
-        加载 Whisper 模型到 GPU
+        加载 Whisper 模型
         
         Args:
             device: 运行设备 ("cuda" 或 "cpu")
+            compute_type: 计算类型 (可选，默认根据设备自动选择)
         """
         if self.model is not None:
             print("✅ 模型已加载")
             return
         
+        # 根据设备自动选择计算类型
+        if compute_type is None:
+            compute_type = "float16" if device == "cuda" else "int8"
+        
         print(f"📥 加载 Whisper {self.MODEL_SIZE} 模型...")
         print(f"🖥️ 设备: {device}")
-        print(f"📊 计算类型: {self.COMPUTE_TYPE}")
+        print(f"📊 计算类型: {compute_type}")
         
         try:
             self.model = WhisperModel(
                 self.MODEL_SIZE,
                 device=device,
-                compute_type=self.COMPUTE_TYPE,
+                compute_type=compute_type,
                 download_root=self.model_path
             )
             print("✅ 模型加载完成")
