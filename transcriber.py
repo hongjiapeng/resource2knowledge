@@ -28,22 +28,41 @@ class WhisperTranscriber:
         self.model = None
         self.model_path = model_path
         self.model_size = model_size or self.MODEL_SIZE
+        self.last_device = None
+        self.last_compute_type = None
     
-    def load_model(self, device: str = "cuda", compute_type: Optional[str] = None):
+    def load_model(self, device: str = None, compute_type: Optional[str] = None):
         """
         Load the Whisper model.
         
         Args:
-            device: Execution device ("cuda" or "cpu")
+            device: Execution device ("cuda" or "cpu"). Auto-detects if None.
             compute_type: Compute type (optional; auto-selected by device when omitted)
         """
         if self.model is not None:
             print("✅ Model already loaded")
             return
         
+        # Auto-detect device if not specified
+        import platform
+        if device is None:
+            if torch.cuda.is_available():
+                device = "cuda"
+                print("🔍 Auto-detected: CUDA (NVIDIA GPU)")
+            elif platform.system() == "Darwin" and platform.machine() == "arm64":
+                # Apple Silicon (M1/M2/M3)
+                device = "cpu"  # faster-whisper supports MPS on Mac, but cpu is more compatible
+                print("🔍 Auto-detected: Mac (CPU)")
+            else:
+                device = "cpu"
+                print("🔍 Auto-detected: CPU")
+        
         # Select the compute type automatically based on the device
         if compute_type is None:
             compute_type = "float16" if device == "cuda" else "int8"
+
+        self.last_device = device
+        self.last_compute_type = compute_type
         
         print(f"📥 Loading Whisper {self.model_size} model...")
         print(f"🖥️ Device: {device}")

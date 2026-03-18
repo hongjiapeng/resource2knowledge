@@ -265,9 +265,10 @@ class VideoPipeline:
                 
                 for attempt in range(max_retries):
                     try:
-                        # Try CUDA first
-                        self.logger.info(f"🔄 Trying to load Whisper (CUDA) - attempt {attempt + 1}/{max_retries}")
-                        self.transcriber.load_model(device="cuda")
+                        # Auto-detect device (CUDA/CPU)
+                        self.logger.info(f"🔄 Trying to load Whisper (auto-detect) - attempt {attempt + 1}/{max_retries}")
+                        self.transcriber.load_model()
+                        active_device = self.transcriber.last_device or 'unknown'
                         
                         # Run transcription
                         transcript_result = self.transcriber.transcribe(
@@ -283,18 +284,19 @@ class VideoPipeline:
                             'text_length': len(transcript_result['text']),
                             'duration': transcript_result['duration'],
                             'language': transcript_result['language'],
-                            'device': 'cuda'
+                            'device': active_device
                         }
                         result['transcript'] = transcript_result['text']
                         self._save_checkpoint(result)
                         break  # Success: exit the retry loop
                         
-                    except Exception as cuda_error:
-                        last_error = cuda_error
-                        self.logger.warning(f"⚠️ CUDA transcription failed: {cuda_error}")
+                    except Exception as transcribe_error:
+                        last_error = transcribe_error
+                        attempted_device = self.transcriber.last_device or 'auto-detect'
+                        self.logger.warning(f"⚠️ Transcription failed on {attempted_device}: {transcribe_error}")
                         self.transcriber.unload_model()
                         
-                        # Fall back to CPU
+                        # Fall back to CPU explicitly to avoid retrying the same auto-detected path
                         try:
                             self.logger.info("🔄 Falling back to CPU...")
                             self.transcriber.load_model(device="cpu", compute_type="int8")
@@ -311,7 +313,7 @@ class VideoPipeline:
                                 'text_length': len(transcript_result['text']),
                                 'duration': transcript_result['duration'],
                                 'language': transcript_result['language'],
-                                'device': 'cpu'
+                                'device': self.transcriber.last_device or 'cpu'
                             }
                             result['transcript'] = transcript_result['text']
                             self._save_checkpoint(result)
