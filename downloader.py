@@ -27,6 +27,23 @@ def get_yt_dlp_path() -> str:
     return "yt-dlp"
 
 
+def run_command(cmd: list[str], timeout: int) -> subprocess.CompletedProcess:
+    """Run subprocess commands with UTF-8-safe decoding on Windows."""
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
+
+    return subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+        env=env,
+    )
+
+
 class VideoDownloader:
     """视频下载器 - 仅下载音频流"""
     
@@ -132,12 +149,7 @@ class VideoDownloader:
             ]
         
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=600  # 10分钟超时
-            )
+            result = run_command(cmd, timeout=600)
             
             if result.returncode != 0:
                 raise Exception(f"下载失败: {result.stderr}")
@@ -170,7 +182,7 @@ class VideoDownloader:
                 '--no-download',
                 url
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = run_command(cmd, timeout=30)
             if result.returncode == 0:
                 title = result.stdout.strip()
                 # 清理标题中的非法文件名字符
@@ -206,7 +218,7 @@ class VideoDownloader:
             yt_dlp = get_yt_dlp_path()
             cmd = [yt_dlp, '--dump-json', '--no-download', url]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            result = run_command(cmd, timeout=60)
             
             if result.returncode == 0 and result.stdout.strip():
                 data = json.loads(result.stdout.strip())
@@ -316,7 +328,7 @@ class VideoDownloader:
         yt_dlp = get_yt_dlp_path()
         cmd = [yt_dlp, '--dump-json', '--no-download', '--skip-download', url]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        result = run_command(cmd, timeout=60)
 
         if result.returncode == 0 and result.stdout.strip():
             data = json.loads(result.stdout.strip())

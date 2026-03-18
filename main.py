@@ -46,7 +46,7 @@ class Config:
     LOG_DIR = PROJECT_DIR / "logs"
     
     # 模型配置
-    WHISPER_MODEL = "small"
+    WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
     LLM_MODEL = os.getenv("LLM_MODEL") or None  # None = 自动检测已安装模型
     
     # 转录配置
@@ -56,6 +56,7 @@ class Config:
     # Notion 配置
     NOTION_TOKEN = os.getenv("NOTION_TOKEN")
     NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID")
+    DISABLE_NOTION = os.getenv("DISABLE_NOTION", "0").lower() in {"1", "true", "yes", "on"}
     
     # 清理配置
     CLEANUP_AUDIO = True  # 下载后删除音频
@@ -94,15 +95,18 @@ def setup_logging(log_level: str = "INFO") -> logging.Logger:
 class VideoPipeline:
     """视频处理完整工作流"""
     
-    def __init__(self, logger: Optional[logging.Logger] = None):
+    def __init__(self, logger: Optional[logging.Logger] = None, skip_notion: bool = False):
         self.logger = logger or logging.getLogger("VideoPipeline")
         self.downloader = VideoDownloader(str(Config.DOWNLOAD_DIR))
-        self.transcriber = WhisperTranscriber()
+        self.transcriber = WhisperTranscriber(model_size=Config.WHISPER_MODEL)
         self.summarizer = Summarizer(model=Config.LLM_MODEL)
         
         # Notion 写入器 (可选)
         self.notion_writer = None
-        if Config.NOTION_TOKEN and Config.NOTION_DATABASE_ID:
+        notion_disabled = skip_notion or Config.DISABLE_NOTION
+        if notion_disabled:
+            self.logger.info("Notion writing disabled")
+        elif Config.NOTION_TOKEN and Config.NOTION_DATABASE_ID:
             try:
                 self.notion_writer = NotionWriter(
                     token=Config.NOTION_TOKEN,
@@ -461,6 +465,8 @@ def main():
                        help='跳过转录步骤')
     parser.add_argument('--skip-summary', action='store_true',
                        help='跳过摘要步骤')
+    parser.add_argument('--skip-notion', action='store_true',
+                       help='跳过 Notion 写入')
     parser.add_argument('--no-cleanup', action='store_true',
                        help='不清理临时音频文件')
     parser.add_argument('--no-resume', action='store_true',
@@ -478,9 +484,10 @@ def main():
     
     # 更新配置
     Config.CLEANUP_AUDIO = not args.no_cleanup
+    Config.DISABLE_NOTION = Config.DISABLE_NOTION or args.skip_notion
     
     # 创建管道
-    pipeline = VideoPipeline(logger)
+    pipeline = VideoPipeline(logger, skip_notion=args.skip_notion)
     
     # 运行
     try:

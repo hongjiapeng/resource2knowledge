@@ -1,38 +1,42 @@
-# 🌐 Resource2Knowledge - 互联网资源知识入库工作流
+# 🌐 ClipVault - 互联网内容知识归档工具
 
-> 本地运行、无需付费 API、适配 8GB 显存（当前支持视频，后续可扩展图文）
+> 本地运行、无需付费 API，支持抓取互联网内容（视频 / 图文）、转录、总结并归档到 Notion。适合 8GB+ 显存环境。
 
-## 📋 功能概览
+[English](README.md) | [简体中文](README.zh-CN.md)
+
+## ✨ 功能特性
+
+将互联网内容沉淀为可检索的个人知识库：
+
+- 📥 **多平台支持**：YouTube、Bilibili、小红书（视频 + 图文）
+- 🎙️ **本地语音转录**：基于 Whisper，本地完成音频转文字
+- 🤖 **本地 AI 总结**：通过 Ollama 运行本地 LLM 生成摘要
+- 💾 **灵活归档**：支持写入 Notion，也支持本地测试模式
+- 🔌 **自动化友好**：可集成到自动化工作流
+- ⚡ **断点续跑**：中断后可从 checkpoint 恢复
+
+---
+
+## 📋 流程概览
 
 | 步骤 | 模块 | 技术 | 显存占用 |
 |------|------|------|----------|
-| 1. 下载音频 | downloader.py | yt-dlp | - |
-| 2. 语音转文本 | transcriber.py | faster-whisper small | ~2GB |
-| 3. 生成摘要 | summarizer.py | Ollama qwen2.5:7b | ~4-5GB |
-| 4. 入库 | notion_writer.py | Notion API | - |
+| 1. 下载内容 | downloader.py | yt-dlp | - |
+| 2. 语音转文本 | transcriber.py | faster-whisper（可配置，默认 `small`） | ~2GB |
+| 3. 生成摘要 | summarizer.py | Ollama `qwen3.5`，失败时回退 `qwen2.5` | ~4-7GB |
+| 4. 归档 | notion_writer.py | Notion API / Mock writer | - |
 
-**总显存占用**: ~6-7GB (串行执行，不并发)
-
----
-
-
-
-## 🎯 项目定位
-
-将互联网上的内容资源沉淀为可检索的个人知识库。
-
-- **当前输入**: 视频链接（如 YouTube、Bilibili）
-- **后续输入规划**: 图文内容（如小红书图文）
-- **当前输出**: Notion 数据库
-- **后续输出规划**: CSV / Excel 等离线格式
+**总显存占用**：约 `6-9GB`（串行执行，不并发）
 
 ---
+
 ## 🖥️ 环境要求
 
-- **OS**: Windows 11
-- **GPU**: NVIDIA RTX 5060 (8GB VRAM)
-- **RAM**: 32GB
-- **CUDA**: 12.x
+- **OS**：Windows 11 / Linux / macOS
+- **GPU**：NVIDIA GPU，建议 8GB+ 显存（如 RTX 4060/5060、RTX 3070）
+- **RAM**：建议 16GB+，32GB 更佳
+- **CUDA**：12.x
+- **Python**：3.9+
 
 ---
 
@@ -42,8 +46,8 @@
 
 ```powershell
 # 创建项目目录
-mkdir resource2knowledge
-cd resource2knowledge
+mkdir clipvault
+cd clipvault
 
 # 创建虚拟环境 (推荐)
 python -m venv venv
@@ -56,10 +60,10 @@ pip install -r requirements.txt
 ### 2. 安装 yt-dlp
 
 ```powershell
-# 方法1: pip
+# 方法 1: pip
 pip install yt-dlp
 
-# 方法2: winget (Windows)
+# 方法 2: winget (Windows)
 winget install yt-dlp
 ```
 
@@ -80,10 +84,11 @@ winget install FFmpeg.FFmpeg
 # 或使用 winget
 winget install Ollama.Ollama
 
-# 启动服务 (后台运行)
+# 启动服务（后台运行）
 ollama serve
 
-# 拉取模型
+# 拉取推荐模型
+ollama pull qwen3.5:latest
 ollama pull qwen2.5:7b-instruct-q4_K_M
 
 # 验证
@@ -92,11 +97,13 @@ ollama list
 
 ### 5. 下载 Whisper 模型
 
-首次运行时会自动下载 `small` 模型 (~500MB)
+首次运行时会自动下载 `small` 模型（约 500MB）
 
 ---
 
-## ⚙️ 配置 Notion
+## ⚙️ 配置
+
+### 方案 1：接入 Notion
 
 ### 步骤 1: 创建 Integration
 
@@ -134,7 +141,7 @@ https://notion.so/{workspace}/{Database_ID}?v=...
                       ↑ 这里就是 Database ID
 ```
 
-### 步骤 5: 配置环境变量
+### 步骤 5：配置环境变量
 
 ```powershell
 # 复制配置模板
@@ -143,6 +150,24 @@ copy .env.example .env
 # 编辑 .env 文件
 notepad .env
 ```
+
+建议在 `.env` 中至少配置：
+
+```env
+NOTION_TOKEN=your_integration_token_here
+NOTION_DATABASE_ID=your_database_id_here
+WHISPER_MODEL=small
+LLM_MODEL=qwen3.5:latest
+LLM_MODEL_FALLBACK=qwen2.5:7b-instruct-q4_K_M
+DISABLE_NOTION=0
+```
+
+### 方案 2：本地测试模式
+
+如果你只想测试下载、转录或摘要，不希望写入 Notion，可以：
+
+- 在命令行使用 `--skip-notion`
+- 或在 `.env` 里设置 `DISABLE_NOTION=1`
 
 ---
 
@@ -162,6 +187,7 @@ python main.py "url" --log-level DEBUG
 
 # 跳过部分步骤
 python main.py "url" --skip-summary
+python main.py "url" --skip-notion
 python main.py "url" --no-cleanup
 ```
 
@@ -177,6 +203,14 @@ https://youtube.com/watch?v=xxx3
 
 # 批量处理
 Get-Content urls.txt | ForEach-Object { python main.py $_ }
+```
+
+### 自动化集成
+
+可通过 `clip_to_vault` 技能接入自动化流程：
+
+```python
+skill.clip_to_vault(url="https://youtube.com/watch?v=xxx")
 ```
 
 ---
@@ -198,8 +232,9 @@ python -c "import torch; print(f'VRAM: {torch.cuda.get_device_properties(0).tota
 | 模型 | 参数量 | 量化 | 显存占用 | 速度 |
 |------|--------|------|----------|------|
 | Whisper small | - | float16 | ~2GB | 快 |
+| Whisper medium | - | float16 | ~5GB | 较慢 |
+| qwen3.5 | latest | 默认 | ~6-7GB | 中等 |
 | qwen2.5:7b | 7B | Q4_K_M | ~4-5GB | 中等 |
-| **总计** | - | - | **~6-7GB** | 10分钟视频<3分钟 |
 
 ---
 
@@ -238,27 +273,32 @@ python -c "import torch; print(f'VRAM: {torch.cuda.get_device_properties(0).tota
 | 问题 | 解决方案 |
 |------|----------|
 | yt-dlp 下载失败 | 检查网络，或使用代理 |
+| yt-dlp 在 Windows 输出乱码或崩溃 | 更新到最新代码，当前已强制使用 UTF-8 安全解码 |
 | Whisper 报错 | 确认 FFmpeg 已安装 |
 | Ollama 连接失败 | 运行 `ollama serve` |
 | Notion 401 错误 | 检查 Token 和 Database ID |
+| 测试时仍写入了 Notion | 使用 `--skip-notion` 或设置 `DISABLE_NOTION=1` |
 
 ---
 
 ## 📁 项目结构
 
 ```
-resource2knowledge/
+clipvault/
 ├── main.py              # 主入口
-├── downloader.py        # 视频下载
+├── downloader.py        # 视频 / 内容下载
 ├── transcriber.py       # Whisper 转录
-├── summarizer.py       # LLM 摘要
-├── notion_writer.py     # Notion 写入
+├── summarizer.py        # LLM 摘要
+├── notion_writer.py     # Notion 写入 / Mock writer
 ├── requirements.txt     # 依赖
 ├── .env.example         # 配置模板
 ├── .env                 # 本地配置 (gitignore)
 ├── downloads/           # 临时音频
 ├── logs/                # 运行日志
-└── README.md
+├── checkpoints/         # 断点续跑文件
+├── outputs/             # 本地产物（已 gitignore）
+├── README.md            # 英文文档
+└── README.zh-CN.md      # 中文文档
 ```
 
 ---
@@ -277,11 +317,32 @@ resource2knowledge/
 ### 质量优化
 
 1. **使用更大模型**
-   - Whisper: `medium` (需要更多显存)
+   - Whisper: `medium`（设置 `WHISPER_MODEL=medium`）
    - LLM: `qwen2.5:14b` (需要 10GB+ 显存)
+
+---
+
+## 🤝 贡献
+
+欢迎贡献，当前值得继续改进的方向包括：
+
+- [ ] 支持更多平台（Instagram、TikTok 等）
+- [ ] Web UI 界面
+- [ ] 批量处理仪表盘
+- [ ] Excel / Airtable 集成
+- [ ] 多语言总结支持
 
 ---
 
 ## 📝 License
 
 MIT License - 可自由使用和修改
+
+---
+
+## 🙏 致谢
+
+- [faster-whisper](https://github.com/guillaumekln/faster-whisper) - 本地转录
+- [Ollama](https://ollama.com) - 本地 LLM 推理
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) - 通用下载器
+- [Notion API](https://developers.notion.com) - 知识库集成

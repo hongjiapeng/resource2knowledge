@@ -28,11 +28,11 @@ Transform internet content into searchable personal knowledge base:
 | Step | Module | Technology | VRAM Usage |
 |------|--------|------------|----------|
 | 1. Download | downloader.py | yt-dlp | - |
-| 2. Transcribe | transcriber.py | faster-whisper (small) | ~2GB |
-| 3. Summarize | summarizer.py | Ollama qwen2.5:7b | ~4-5GB |
-| 4. Archive | notion_writer.py / csv_writer.py | Notion API / CSV | - |
+| 2. Transcribe | transcriber.py | faster-whisper (configurable, default: small) | ~2GB |
+| 3. Summarize | summarizer.py | Ollama qwen3.5 with qwen2.5 fallback | ~4-7GB |
+| 4. Archive | notion_writer.py | Notion API / Mock writer | - |
 
-**Total VRAM**: ~6-7GB (sequential execution, 8GB GPU recommended)
+**Total VRAM**: ~6-9GB (sequential execution, 8GB+ GPU recommended)
 
 ---
 
@@ -93,7 +93,8 @@ winget install Ollama.Ollama
 # Start service (runs in background)
 ollama serve
 
-# Pull model
+# Pull recommended models
+ollama pull qwen3.5:latest
 ollama pull qwen2.5:7b-instruct-q4_K_M
 
 # Verify
@@ -160,15 +161,15 @@ notepad .env
 ```env
 NOTION_TOKEN=your_integration_token_here
 NOTION_DATABASE_ID=your_database_id_here
+WHISPER_MODEL=small
+LLM_MODEL=qwen3.5:latest
+LLM_MODEL_FALLBACK=qwen2.5:7b-instruct-q4_K_M
+DISABLE_NOTION=0
 ```
 
-### Option 2: CSV/Excel (Simple Export)
+### Option 2: Local Test Mode
 
-No configuration needed! If Notion is not configured, results will automatically save to:
-- `output/results.csv` (CSV format)
-- Can be imported to Excel, Google Sheets, or Airtable
-
-**CSV includes all fields**: Title, URL, Platform, Transcript, Summary, Tags, KeyPoints, Category, Sentiment, CreatedTime
+Use `--skip-notion` or set `DISABLE_NOTION=1` when you want to test download, transcription, or summarization without writing to Notion.
 
 ---
 
@@ -188,6 +189,7 @@ python main.py "url" --log-level DEBUG
 
 # Skip specific steps
 python main.py "url" --skip-summary
+python main.py "url" --skip-notion
 python main.py "url" --no-cleanup
 ```
 
@@ -233,8 +235,9 @@ python -c "import torch; print(f'VRAM: {torch.cuda.get_device_properties(0).tota
 | Model | Parameters | Quantization | VRAM | Speed |
 |------|--------|------|----------|------|
 | Whisper small | - | float16 | ~2GB | Fast |
+| Whisper medium | - | float16 | ~5GB | Slower |
+| qwen3.5 | latest | default | ~6-7GB | Medium |
 | qwen2.5:7b | 7B | Q4_K_M | ~4-5GB | Medium |
-| **Total** | - | - | **~6-7GB** | <3min for 10min video |
 
 ---
 
@@ -273,10 +276,11 @@ python -c "import torch; print(f'VRAM: {torch.cuda.get_device_properties(0).tota
 | Issue | Solution |
 |------|----------|
 | yt-dlp download fails | Check network or use proxy |
+| yt-dlp output crashes on Windows | Update to the latest code, which forces UTF-8-safe subprocess decoding |
 | Whisper errors | Verify FFmpeg is installed |
 | Ollama connection fails | Run `ollama serve` |
 | Notion 401 error | Check Token and Database ID |
-| CSV not saving | Check `output/` folder permissions |
+| Test run still writes to Notion | Use `--skip-notion` or set `DISABLE_NOTION=1` |
 
 ---
 
@@ -288,16 +292,14 @@ clipvault/
 ├── downloader.py        # Video/content downloader
 ├── transcriber.py       # Whisper transcription
 ├── summarizer.py        # LLM summarization
-├── notion_writer.py     # Notion API writer
-├── csv_writer.py        # CSV exporter (future)
+├── notion_writer.py     # Notion API writer / mock writer
 ├── requirements.txt     # Dependencies
 ├── .env.example         # Config template
 ├── .env                 # Local config (gitignore)
 ├── downloads/           # Temporary audio files
 ├── logs/                # Execution logs
 ├── checkpoints/         # Resume points
-├── output/              # CSV/Excel exports
-│   └── results.csv
+├── outputs/             # Generated local outputs (gitignored)
 ├── README.md            # English docs
 └── README.zh-CN.md      # Chinese docs
 ```
@@ -318,7 +320,7 @@ clipvault/
 ### Quality Optimization
 
 1. **Use larger models**
-   - Whisper: `medium` (requires more VRAM)
+   - Whisper: `medium` (set `WHISPER_MODEL=medium`)
    - LLM: `qwen2.5:14b` (needs 10GB+ VRAM)
 
 ---

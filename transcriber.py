@@ -17,15 +17,17 @@ class WhisperTranscriber:
     MODEL_SIZE = "small"
     COMPUTE_TYPE = "float16"  # float16 在 RTX 5060 上约占用 2GB
     
-    def __init__(self, model_path: Optional[str] = None):
+    def __init__(self, model_path: Optional[str] = None, model_size: Optional[str] = None):
         """
         初始化转录器
         
         Args:
             model_path: 自定义模型路径 (可选)
+            model_size: Whisper model size override
         """
         self.model = None
         self.model_path = model_path
+        self.model_size = model_size or self.MODEL_SIZE
     
     def load_model(self, device: str = "cuda", compute_type: Optional[str] = None):
         """
@@ -43,13 +45,13 @@ class WhisperTranscriber:
         if compute_type is None:
             compute_type = "float16" if device == "cuda" else "int8"
         
-        print(f"📥 加载 Whisper {self.MODEL_SIZE} 模型...")
+        print(f"📥 加载 Whisper {self.model_size} 模型...")
         print(f"🖥️ 设备: {device}")
         print(f"📊 计算类型: {compute_type}")
         
         try:
             self.model = WhisperModel(
-                self.MODEL_SIZE,
+                self.model_size,
                 device=device,
                 compute_type=compute_type,
                 download_root=self.model_path
