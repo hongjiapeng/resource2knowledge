@@ -33,17 +33,27 @@ Transform internet content into searchable personal knowledge base:
 | 3. Summarize | summarizer.py | Ollama qwen3.5 with qwen2.5 fallback | ~4-7GB |
 | 4. Archive | notion_writer.py | Notion API / Mock writer | - |
 
-**Total VRAM**: ~6-9GB (sequential execution, 8GB+ GPU recommended)
+**Total VRAM**: ~6-9GB when using NVIDIA GPU acceleration (sequential execution)
+
+On CPU-only systems, the pipeline still works but transcription and summarization will be slower.
 
 ---
 
 ## 🖥️ System Requirements
 
 - **OS**: Windows 11 / Linux / macOS
-- **GPU**: NVIDIA GPU with 8GB+ VRAM (e.g., RTX 4060/5060, RTX 3070)
-- **RAM**: 16GB+ recommended (32GB optimal)
-- **CUDA**: 12.x (for GPU acceleration)
 - **Python**: 3.9+
+- **RAM**: 16GB+ recommended (32GB optimal)
+- **Optional GPU acceleration**: NVIDIA GPU with 8GB+ VRAM (e.g., RTX 4060/5060, RTX 3070)
+- **CUDA**: 12.x if you want GPU acceleration
+
+The transcription step auto-detects the runtime device:
+
+- **NVIDIA + CUDA available**: uses `cuda`
+- **Windows/Linux without CUDA**: falls back to `cpu`
+- **macOS (Intel / Apple Silicon)**: currently uses `cpu` for compatibility
+
+macOS is supported, but the current default path is CPU inference rather than Apple GPU acceleration.
 
 ---
 

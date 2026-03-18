@@ -264,11 +264,14 @@ class VideoPipeline:
                 transcript_result = None
                 
                 for attempt in range(max_retries):
+                    attempted_device = None
                     try:
                         # Auto-detect device (CUDA/CPU)
                         self.logger.info(f"🔄 Trying to load Whisper (auto-detect) - attempt {attempt + 1}/{max_retries}")
                         self.transcriber.load_model()
                         active_device = self.transcriber.last_device or 'unknown'
+                        attempted_device = active_device
+                        self.logger.info(f"🖥️ Whisper device selected: {active_device}")
                         
                         # Run transcription
                         transcript_result = self.transcriber.transcribe(
@@ -292,38 +295,41 @@ class VideoPipeline:
                         
                     except Exception as transcribe_error:
                         last_error = transcribe_error
-                        attempted_device = self.transcriber.last_device or 'auto-detect'
+                        attempted_device = attempted_device or self.transcriber.last_device or 'auto-detect'
                         self.logger.warning(f"⚠️ Transcription failed on {attempted_device}: {transcribe_error}")
                         self.transcriber.unload_model()
-                        
-                        # Fall back to CPU explicitly to avoid retrying the same auto-detected path
-                        try:
-                            self.logger.info("🔄 Falling back to CPU...")
-                            self.transcriber.load_model(device="cpu", compute_type="int8")
-                            
-                            transcript_result = self.transcriber.transcribe(
-                                audio_path,
-                                language=Config.TRANSCRIBE_LANGUAGE
-                            )
-                            
-                            self.transcriber.unload_model()
-                            
-                            result['steps']['transcribe'] = {
-                                'status': 'success',
-                                'text_length': len(transcript_result['text']),
-                                'duration': transcript_result['duration'],
-                                'language': transcript_result['language'],
-                                'device': self.transcriber.last_device or 'cpu'
-                            }
-                            result['transcript'] = transcript_result['text']
-                            self._save_checkpoint(result)
-                            self.logger.info("✅ CPU transcription succeeded!")
-                            break
-                            
-                        except Exception as cpu_error:
-                            last_error = cpu_error
-                            self.logger.warning(f"⚠️ CPU transcription also failed: {cpu_error}")
-                            self.transcriber.unload_model()
+
+                        if attempted_device != 'cpu':
+                            # Fall back to CPU explicitly to avoid retrying the same auto-detected path
+                            try:
+                                self.logger.info("🔄 Falling back to CPU...")
+                                self.transcriber.load_model(device="cpu", compute_type="int8")
+                                
+                                transcript_result = self.transcriber.transcribe(
+                                    audio_path,
+                                    language=Config.TRANSCRIBE_LANGUAGE
+                                )
+                                
+                                self.transcriber.unload_model()
+                                
+                                result['steps']['transcribe'] = {
+                                    'status': 'success',
+                                    'text_length': len(transcript_result['text']),
+                                    'duration': transcript_result['duration'],
+                                    'language': transcript_result['language'],
+                                    'device': self.transcriber.last_device or 'cpu'
+                                }
+                                result['transcript'] = transcript_result['text']
+                                self._save_checkpoint(result)
+                                self.logger.info("✅ CPU fallback transcription succeeded!")
+                                break
+                                
+                            except Exception as cpu_error:
+                                last_error = cpu_error
+                                self.logger.warning(f"⚠️ CPU fallback also failed: {cpu_error}")
+                                self.transcriber.unload_model()
+                        else:
+                            self.logger.info("ℹ️ Auto-detect already selected CPU; skipping redundant CPU fallback")
                         
                         # Wait before retrying unless this was the last attempt
                         if attempt < max_retries - 1:

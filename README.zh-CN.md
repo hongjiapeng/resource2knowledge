@@ -27,17 +27,27 @@
 | 3. 生成摘要 | summarizer.py | Ollama `qwen3.5`，失败时回退 `qwen2.5` | ~4-7GB |
 | 4. 归档 | notion_writer.py | Notion API / Mock writer | - |
 
-**总显存占用**：约 `6-9GB`（串行执行，不并发）
+**总显存占用**：约 `6-9GB`（在 NVIDIA GPU 加速下，串行执行，不并发）
+
+如果是纯 CPU 环境，流程仍然可以运行，只是转录和总结速度会更慢。
 
 ---
 
 ## 🖥️ 环境要求
 
 - **OS**：Windows 11 / Linux / macOS
-- **GPU**：NVIDIA GPU，建议 8GB+ 显存（如 RTX 4060/5060、RTX 3070）
-- **RAM**：建议 16GB+，32GB 更佳
-- **CUDA**：12.x
 - **Python**：3.9+
+- **RAM**：建议 16GB+，32GB 更佳
+- **可选 GPU 加速**：NVIDIA GPU，建议 8GB+ 显存（如 RTX 4060/5060、RTX 3070）
+- **CUDA**：如果希望启用 GPU 加速，建议使用 12.x
+
+转录阶段会自动检测运行设备：
+
+- **检测到 NVIDIA + CUDA 可用**：使用 `cuda`
+- **Windows/Linux 无 CUDA**：自动回退到 `cpu`
+- **macOS（Intel / Apple Silicon）**：当前默认使用 `cpu`，优先保证兼容性
+
+也就是说，macOS 可以运行，但当前实现默认不启用苹果 GPU 加速。
 
 ---
 
