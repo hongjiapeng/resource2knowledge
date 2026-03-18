@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from downloader import VideoDownloader
 from transcriber import WhisperTranscriber
 from summarizer import Summarizer
+from transcript_cleaner import TranscriptCleaner
 from notion_writer import NotionWriter, MockNotionWriter
 
 
@@ -51,6 +52,7 @@ class Config:
     
     # 转录配置
     TRANSCRIBE_LANGUAGE = "zh"  # 中文优先
+    ENABLE_TRANSCRIPT_CLEANING = os.getenv("ENABLE_TRANSCRIPT_CLEANING", "1").lower() in {"1", "true", "yes", "on"}
     MAX_TRANSCRIPT_LENGTH = 5000  # LLM 最大    # Notion输入
     
     # Notion 配置
@@ -95,10 +97,13 @@ def setup_logging(log_level: str = "INFO") -> logging.Logger:
 class VideoPipeline:
     """视频处理完整工作流"""
     
-    def __init__(self, logger: Optional[logging.Logger] = None, skip_notion: bool = False):
+    def __init__(self, logger: Optional[logging.Logger] = None, skip_notion: bool = False, disable_cleaning: bool = False):
         self.logger = logger or logging.getLogger("VideoPipeline")
         self.downloader = VideoDownloader(str(Config.DOWNLOAD_DIR))
         self.transcriber = WhisperTranscriber(model_size=Config.WHISPER_MODEL)
+        self.transcript_cleaner = TranscriptCleaner(
+            enabled=Config.ENABLE_TRANSCRIPT_CLEANING and not disable_cleaning
+        )
         self.summarizer = Summarizer(model=Config.LLM_MODEL)
         
         # Notion 写入器 (可选)
@@ -344,6 +349,23 @@ class VideoPipeline:
             if not skip_summary and 'transcript' in result:
                 self.logger.info("\n📍 Step 3: 生成摘要 (LLM)")
                 self.logger.info("-" * 30)
+
+                transcript_for_summary = result['transcript']
+                if self.transcript_cleaner.enabled:
+                    self.logger.info("🧹 Cleaning transcript before summarization")
+                    cleaned_transcript = self.transcript_cleaner.clean(transcript_for_summary)
+                    result['steps']['clean_transcript'] = {
+                        'status': 'success',
+                        'enabled': True,
+                        'original_length': len(transcript_for_summary),
+                        'cleaned_length': len(cleaned_transcript),
+                    }
+                    transcript_for_summary = cleaned_transcript
+                else:
+                    result['steps']['clean_transcript'] = {
+                        'status': 'skipped',
+                        'reason': 'disabled'
+                    }
                 
                 # 检查 Ollama
                 if not self.summarizer.check_ollama():
@@ -356,7 +378,7 @@ class VideoPipeline:
                 # 生成摘要
                 content_type = result.get('content_type', 'video')
                 summary_result = self.summarizer.summarize(
-                    result['transcript'],
+                    transcript_for_summary,
                     max_length=Config.MAX_TRANSCRIPT_LENGTH,
                     content_type=content_type
                 )
@@ -467,6 +489,8 @@ def main():
                        help='跳过摘要步骤')
     parser.add_argument('--skip-notion', action='store_true',
                        help='跳过 Notion 写入')
+    parser.add_argument('--disable-cleaning', action='store_true',
+                       help='禁用摘要前的 transcript 清洗')
     parser.add_argument('--no-cleanup', action='store_true',
                        help='不清理临时音频文件')
     parser.add_argument('--no-resume', action='store_true',
@@ -487,7 +511,11 @@ def main():
     Config.DISABLE_NOTION = Config.DISABLE_NOTION or args.skip_notion
     
     # 创建管道
-    pipeline = VideoPipeline(logger, skip_notion=args.skip_notion)
+    pipeline = VideoPipeline(
+        logger,
+        skip_notion=args.skip_notion,
+        disable_cleaning=args.disable_cleaning,
+    )
     
     # 运行
     try:

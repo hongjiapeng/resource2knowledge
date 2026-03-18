@@ -11,6 +11,7 @@
 - 📥 **多平台支持**：YouTube、Bilibili、小红书（视频 + 图文）
 - 🎙️ **本地语音转录**：基于 Whisper，本地完成音频转文字
 - 🤖 **本地 AI 总结**：通过 Ollama 运行本地 LLM 生成摘要
+- 🧹 **可选 transcript 清洗**：在总结前对噪音较多的 ASR 文本做低风险预处理
 - 💾 **灵活归档**：支持写入 Notion，也支持本地测试模式
 - 🔌 **自动化友好**：可集成到自动化工作流
 - ⚡ **断点续跑**：中断后可从 checkpoint 恢复
@@ -160,6 +161,7 @@ WHISPER_MODEL=small
 LLM_MODEL=qwen3.5:latest
 LLM_MODEL_FALLBACK=qwen2.5:7b-instruct-q4_K_M
 DISABLE_NOTION=0
+ENABLE_TRANSCRIPT_CLEANING=1
 ```
 
 ### 方案 2：本地测试模式
@@ -188,6 +190,7 @@ python main.py "url" --log-level DEBUG
 # 跳过部分步骤
 python main.py "url" --skip-summary
 python main.py "url" --skip-notion
+python main.py "url" --disable-cleaning
 python main.py "url" --no-cleanup
 ```
 
@@ -278,6 +281,7 @@ python -c "import torch; print(f'VRAM: {torch.cuda.get_device_properties(0).tota
 | Ollama 连接失败 | 运行 `ollama serve` |
 | Notion 401 错误 | 检查 Token 和 Database ID |
 | 测试时仍写入了 Notion | 使用 `--skip-notion` 或设置 `DISABLE_NOTION=1` |
+| 口语视频总结过于泛化 | 保持清洗开启，或将 `WHISPER_MODEL` 提升到 `medium` |
 
 ---
 
@@ -288,6 +292,7 @@ clipvault/
 ├── main.py              # 主入口
 ├── downloader.py        # 视频 / 内容下载
 ├── transcriber.py       # Whisper 转录
+├── transcript_cleaner.py # 可选 transcript 预处理
 ├── summarizer.py        # LLM 摘要
 ├── notion_writer.py     # Notion 写入 / Mock writer
 ├── requirements.txt     # 依赖

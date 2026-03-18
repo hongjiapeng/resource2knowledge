@@ -17,6 +17,7 @@ Transform internet content into searchable personal knowledge base:
 - 📥 **Multi-platform Support**: YouTube, Bilibili, Xiaohongshu (video + image-text posts)
 - 🎙️ **Local Transcription**: Whisper-powered audio-to-text (no API fees)
 - 🤖 **AI Summarization**: Ollama LLM generates key insights (runs locally)
+- 🧹 **Optional Transcript Cleaning**: Low-risk cleanup improves noisy ASR output before summarization
 - 💾 **Flexible Export**: Save to Notion database or CSV/Excel
 - 🔌 **Automation Ready**: OpenClaw skill integration for workflow automation
 - ⚡ **Checkpoint Resume**: Auto-resume from interruptions
@@ -165,6 +166,7 @@ WHISPER_MODEL=small
 LLM_MODEL=qwen3.5:latest
 LLM_MODEL_FALLBACK=qwen2.5:7b-instruct-q4_K_M
 DISABLE_NOTION=0
+ENABLE_TRANSCRIPT_CLEANING=1
 ```
 
 ### Option 2: Local Test Mode
@@ -190,6 +192,7 @@ python main.py "url" --log-level DEBUG
 # Skip specific steps
 python main.py "url" --skip-summary
 python main.py "url" --skip-notion
+python main.py "url" --disable-cleaning
 python main.py "url" --no-cleanup
 ```
 
@@ -281,6 +284,7 @@ python -c "import torch; print(f'VRAM: {torch.cuda.get_device_properties(0).tota
 | Ollama connection fails | Run `ollama serve` |
 | Notion 401 error | Check Token and Database ID |
 | Test run still writes to Notion | Use `--skip-notion` or set `DISABLE_NOTION=1` |
+| Summaries are too generic on noisy speech | Keep cleaning enabled or raise `WHISPER_MODEL` to `medium` |
 
 ---
 
@@ -291,6 +295,7 @@ clipvault/
 ├── main.py              # Main entry point
 ├── downloader.py        # Video/content downloader
 ├── transcriber.py       # Whisper transcription
+├── transcript_cleaner.py # Optional transcript preprocessor
 ├── summarizer.py        # LLM summarization
 ├── notion_writer.py     # Notion API writer / mock writer
 ├── requirements.txt     # Dependencies
