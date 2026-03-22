@@ -47,7 +47,7 @@ class Config:
     LOG_DIR = PROJECT_DIR / "logs"
     
     # Model settings
-    WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
+    WHISPER_MODEL = os.getenv("WHISPER_MODEL", "medium")
     LLM_MODEL = os.getenv("LLM_MODEL") or None  # None = auto-detect an installed model
     
     # Transcription settings
