@@ -13,8 +13,8 @@ from faster_whisper import WhisperModel
 class WhisperTranscriber:
     """Local Whisper transcriber."""
     
-    # Model defaults: the small model is a good fit for 8GB VRAM
-    MODEL_SIZE = "small"
+    # Model defaults: medium is better quality, small is faster
+    MODEL_SIZE = "medium"
     COMPUTE_TYPE = "float16"  # float16 uses about 2GB on an RTX 5060
     
     def __init__(self, model_path: Optional[str] = None, model_size: Optional[str] = None):
