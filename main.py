@@ -9,10 +9,13 @@ import sys
 from pathlib import Path
 
 # Fix Windows UTF-8 output
+import io
 if sys.platform == "win32":
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    # Only wrap if not already wrapped (prevent double-wrap)
+    if not isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    if not isinstance(sys.stderr, io.TextIOWrapper):
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # Load the .env file
 from dotenv import load_dotenv
@@ -26,7 +29,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
-# Add the current directory to sys.path
+# Add the current directory to sys.path (after venv so venv packages take priority)
+sys.path.insert(0, str(Path(__file__).parent / "venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from downloader import VideoDownloader
@@ -80,11 +84,14 @@ def setup_logging(log_level: str = "INFO") -> logging.Logger:
         logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     )
     
-    # Console logger
+    # Console logger (force UTF-8 on Windows)
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(
         logging.Formatter('%(levelname)s: %(message)s')
     )
+    if sys.platform == "win32":
+        import io
+        console_handler.stream = io.TextIOWrapper(sys.stdout.buffer if hasattr(sys.stdout, 'buffer') else sys.stdout, encoding='utf-8', errors='replace')
     
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)

@@ -74,10 +74,8 @@ class NotionWriter:
     def test_connection(self) -> bool:
         try:
             self.client.databases.retrieve(database_id=self.database_id)
-            print("✅ Notion connection successful")
             return True
-        except Exception as e:
-            print(f"❌ Notion connection failed: {e}")
+        except Exception:
             return False
 
     # -------------------- Core: create a page --------------------
@@ -338,18 +336,15 @@ class MockNotionWriter:
 
     def __init__(self, *args, **kwargs):
         self.data_store: List[Dict[str, Any]] = []
-        print("📝 Using MockNotionWriter (test mode, nothing will be written to Notion)")
 
     def test_connection(self) -> bool:
-        print("✅ Mock connection successful")
         return True
 
     def create_page(self, data: Dict[str, Any]) -> Dict[str, Any]:
         self.data_store.append(data)
-        output_file = "notion_mock_output.json"
+        output_file = Path(__file__).parent / "notion_mock_output.json"
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(self.data_store, f, ensure_ascii=False, indent=2)
-        print(f"✅ Saved locally: {output_file}")
         return {"id": "mock-page-id", "data": data}
 
     def check_duplicate(self, url: str) -> bool:
