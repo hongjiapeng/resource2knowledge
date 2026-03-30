@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clipvault"
+version = "0.3.0"
+description = "Turn online content into your personal knowledge vault"
+requires-python = ">=3.10"
+dependencies = [
+    "python-dotenv>=1.0.0",
+    "numpy>=1.24.0",
+    "requests>=2.31.0",
+    "faster-whisper>=1.0.0",
+    "ollama>=0.1.0",
+    "notion-client>=2.1.0",
+    "imageio-ffmpeg>=0.4.0",
+    "tqdm>=4.66.0",
+    "torch>=2.0.0",
+]
+
+[project.optional-dependencies]
+cloud = [
+    "openai>=1.0.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4.0",
+]
+all = [
+    "clipvault[cloud,dev]",
+]
+
+[project.scripts]
+clipvault = "clipvault.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
