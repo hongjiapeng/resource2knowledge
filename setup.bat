@@ -178,7 +178,7 @@ echo.
 echo Next:
 echo 1. notepad .env
 echo 2. ollama pull qwen2.5:7b-instruct-q4_K_M
-echo 3. venv\Scripts\python.exe main.py "VIDEO_URL"
+echo 3. venv\Scripts\python.exe -m clipvault "VIDEO_URL"
 echo ========================================
 goto :end
 
