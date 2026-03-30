@@ -266,7 +266,8 @@ class PipelineService:
         logger.info("")
         logger.info("📍 Step 4/5: Summarize")
         logger.info("-"*30)
-        logger.info("🤖 Summarizing with LLM...")
+        model_name = getattr(self.summarizer, "model", None) or "unknown"
+        logger.info("🤖 Summarizing with LLM (model=%s)...", model_name)
         try:
             text = result.cleaned_transcript or result.transcript.text
             summary = self.summarizer.summarize(
