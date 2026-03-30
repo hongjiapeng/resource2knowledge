@@ -66,6 +66,10 @@ class PipelineService:
                 started_at=datetime.now().isoformat(),
             )
 
+        logger.info("="*50)
+        logger.info("🚀 Starting: %s", url)
+        logger.info("="*50)
+
         if rc.dry_run:
             result.status = StepStatus.SKIPPED
             result.metadata["dry_run"] = True
@@ -91,14 +95,19 @@ class PipelineService:
                 ).total_seconds()
 
             self.ckpt.remove(url)
-            logger.info("Pipeline finished in %.1fs", result.elapsed_seconds or 0)
+            logger.info("")
+            logger.info("="*50)
+            logger.info("✅ Processing complete!")
+            logger.info("⏱️ Total elapsed: %.1fs", result.elapsed_seconds or 0)
+            logger.info("="*50)
+            logger.info("🗑️ Checkpoint removed")
 
         except Exception as exc:
             result.status = StepStatus.ERROR
             result.error = str(exc)
             result.finished_at = datetime.now().isoformat()
             self.ckpt.save(result)
-            logger.error("Pipeline failed: %s", exc)
+            logger.error("❌ Pipeline failed: %s", exc)
             raise
 
         return result
@@ -113,11 +122,15 @@ class PipelineService:
             return
         if rc.should_skip("download"):
             result.ensure_step("download").mark_skipped("user")
+            logger.info("⏭️ Skipping download (user)")
             return
 
         step = result.ensure_step("download")
         step.mark_running()
-        logger.info("[1/5] Downloading: %s", resource.url)
+        logger.info("")
+        logger.info("📍 Step 1/5: Download")
+        logger.info("-"*30)
+        logger.info("📥 Downloading: %s", resource.url)
         try:
             dl = self.downloader.download(resource, force=rc.force_download)
             result.audio_path = dl.get("audio_path")
@@ -136,7 +149,8 @@ class PipelineService:
                 result.transcript = TranscriptResult(text=text)
 
             step.mark_success(platform=resource.platform.value, title=result.title)
-            logger.info("  → Downloaded: %s (%s)", result.title or "untitled", result.content_type.value)
+            logger.info("✅ Downloaded: %s (%s)", result.title or "untitled", result.content_type.value)
+            logger.info("💾 Checkpoint saved")
             self.ckpt.save(result)
         except Exception as exc:
             step.mark_error(exc)
@@ -148,17 +162,23 @@ class PipelineService:
             return
         if rc.should_skip("transcribe"):
             result.ensure_step("transcribe").mark_skipped("user")
+            logger.info("⏭️ Skipping transcription (user)")
             return
         if result.content_type == ContentType.IMAGE_TEXT:
             result.ensure_step("transcribe").mark_skipped("image_text")
+            logger.info("⏭️ Skipping transcription (image-text content)")
             return
         if not result.audio_path:
             result.ensure_step("transcribe").mark_skipped("no_audio")
+            logger.info("⏭️ Skipping transcription (no audio)")
             return
 
         step = result.ensure_step("transcribe")
         step.mark_running()
-        logger.info("[2/5] Transcribing: %s", result.audio_path)
+        logger.info("")
+        logger.info("📍 Step 2/5: Transcribe")
+        logger.info("-"*30)
+        logger.info("🎙️ Transcribing: %s", result.audio_path)
         lang = rc.language or self.settings.transcribe_language
 
         max_retries = 3
@@ -172,6 +192,8 @@ class PipelineService:
                 self.transcriber.unload()
                 result.transcript = tr
                 step.mark_success(duration=tr.duration, device=tr.device)
+                logger.info("✅ Transcribed: %.0fs audio on %s", tr.duration or 0, tr.device)
+                logger.info("💾 Checkpoint saved")
                 self.ckpt.save(result)
                 return
             except Exception as exc:
@@ -186,7 +208,8 @@ class PipelineService:
                     self.transcriber.unload()
                     result.transcript = tr
                     step.mark_success(duration=tr.duration, device="cpu")
-                    self.ckpt.save(result)
+                    logger.info("✅ Transcribed (CPU fallback): %.0fs audio", tr.duration or 0)
+                    logger.info("💾 Checkpoint saved")
                     return
                 except Exception as cpu_exc:
                     last_err = cpu_exc
@@ -212,12 +235,15 @@ class PipelineService:
 
         step = result.ensure_step("clean")
         step.mark_running()
-        logger.info("[3/5] Cleaning transcript (%d chars)", len(result.transcript.text))
+        logger.info("")
+        logger.info("📍 Step 3/5: Clean")
+        logger.info("-"*30)
+        logger.info("🧹 Cleaning transcript (%d chars)", len(result.transcript.text))
         original = result.transcript.text
         cleaned = cleaner.clean(original)
         result.cleaned_transcript = cleaned
         step.mark_success(original_len=len(original), cleaned_len=len(cleaned))
-        logger.info("  → Cleaned: %d → %d chars", len(original), len(cleaned))
+        logger.info("✅ Cleaned: %d → %d chars", len(original), len(cleaned))
 
         # Cleanup audio after successful transcription + cleaning
         if self.settings.cleanup_audio and result.audio_path:
@@ -229,6 +255,7 @@ class PipelineService:
             return
         if rc.should_skip("summarize"):
             result.ensure_step("summarize").mark_skipped("user")
+            logger.info("⏭️ Skipping summarization (user)")
             return
         if result.transcript is None:
             result.ensure_step("summarize").mark_skipped("no_transcript")
@@ -236,7 +263,10 @@ class PipelineService:
 
         step = result.ensure_step("summarize")
         step.mark_running()
-        logger.info("[4/5] Summarizing with LLM...")
+        logger.info("")
+        logger.info("📍 Step 4/5: Summarize")
+        logger.info("-"*30)
+        logger.info("🤖 Summarizing with LLM...")
         try:
             text = result.cleaned_transcript or result.transcript.text
             summary = self.summarizer.summarize(
@@ -247,7 +277,8 @@ class PipelineService:
             self.summarizer.unload()
             result.summary = summary
             step.mark_success()
-            logger.info("  → Summary ready (%d key points, %d tags)", len(summary.key_points or []), len(summary.tags or []))
+            logger.info("✅ Summary ready (%d key points, %d tags)", len(summary.key_points or []), len(summary.tags or []))
+            logger.info("💾 Checkpoint saved")
             self.ckpt.save(result)
         except Exception as exc:
             step.mark_error(exc)
@@ -259,20 +290,26 @@ class PipelineService:
             return
         if rc.skip_storage or self.storage is None:
             result.ensure_step("store").mark_skipped("disabled")
+            logger.info("⏭️ Skipping storage (disabled)")
             return
 
         step = result.ensure_step("store")
         step.mark_running()
-        logger.info("[5/5] Storing to %s", "Notion" if self.storage else "JSON")
+        logger.info("")
+        logger.info("📍 Step 5/5: Store")
+        logger.info("-"*30)
+        logger.info("📝 Storing to %s", "Notion" if self.storage else "JSON")
         try:
             if self.storage.check_duplicate(result.url):
                 step.mark_skipped("duplicate")
+                logger.info("⏭️ Skipping store (duplicate URL)")
                 return
 
             payload = self._build_storage_payload(result)
             meta = self.storage.write(payload)
             step.mark_success(**meta)
-            logger.info("  → Stored: %s", meta.get("url") or meta.get("id", "ok"))
+            logger.info("✅ Stored: %s", meta.get("url") or meta.get("id", "ok"))
+            logger.info("💾 Checkpoint saved")
             self.ckpt.save(result)
         except Exception as exc:
             step.mark_error(exc)
@@ -283,7 +320,12 @@ class PipelineService:
     def _maybe_resume(self, url: str, rc: RuntimeConfig) -> Optional[PipelineResult]:
         if not rc.resume:
             return None
-        return self.ckpt.load(url)
+        result = self.ckpt.load(url)
+        if result:
+            logger.info("📂 Resuming from checkpoint...")
+            if result.title:
+                logger.info("   Existing title: %s", result.title)
+        return result
 
     @staticmethod
     def _build_storage_payload(result: PipelineResult) -> dict:

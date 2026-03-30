@@ -36,16 +36,17 @@ class Summarizer:
     # Model keywords ordered by priority (higher priority appears first)
     # Format: (keyword list, display name, vram)
     MODEL_PRIORITY = [
-        (["qwen2.5", "7b"],        "qwen2.5 7B",   "~4-5GB"),
-        (["qwen2.5", "14b"],       "qwen2.5 14B",  "~9GB"),
+        (["qwen3",   "4b"],        "qwen3 4B",     "~2.5GB"),
         (["qwen2.5", "3b"],        "qwen2.5 3B",   "~2GB"),
-        (["qwen3",   "8b"],        "qwen3 8B",     "~5GB"),
-        (["qwen3",   "4b"],        "qwen3 4B",     "~3GB"),
-        (["llama3",  "8b"],        "llama3 8B",    "~5GB"),
-        (["llama3",  "3b"],        "llama3 3B",    "~2GB"),
-        (["mistral", "7b"],        "mistral 7B",   "~4GB"),
         (["phi3"],                 "phi3",         "~2GB"),
         (["phi"],                  "phi",          "~2GB"),
+        (["qwen2.5", "7b"],        "qwen2.5 7B",   "~4-5GB"),
+        (["qwen2.5", "14b"],       "qwen2.5 14B",  "~9GB"),
+        (["qwen3",   "8b"],        "qwen3 8B",     "~5GB"),
+        (["qwen2.5vl", "7b"],      "qwen2.5vl 7B", "~6GB"),
+        (["llama3",  "3b"],        "llama3 3B",    "~2GB"),
+        (["llama3",  "8b"],        "llama3 8B",    "~5GB"),
+        (["mistral", "7b"],        "mistral 7B",   "~4GB"),
     ]
 
     # Fallback model used when auto-detection fails
