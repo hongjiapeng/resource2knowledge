@@ -117,6 +117,7 @@ class PipelineService:
 
         step = result.ensure_step("download")
         step.mark_running()
+        logger.info("[1/5] Downloading: %s", resource.url)
         try:
             dl = self.downloader.download(resource, force=rc.force_download)
             result.audio_path = dl.get("audio_path")
@@ -135,6 +136,7 @@ class PipelineService:
                 result.transcript = TranscriptResult(text=text)
 
             step.mark_success(platform=resource.platform.value, title=result.title)
+            logger.info("  → Downloaded: %s (%s)", result.title or "untitled", result.content_type.value)
             self.ckpt.save(result)
         except Exception as exc:
             step.mark_error(exc)
@@ -156,6 +158,7 @@ class PipelineService:
 
         step = result.ensure_step("transcribe")
         step.mark_running()
+        logger.info("[2/5] Transcribing: %s", result.audio_path)
         lang = rc.language or self.settings.transcribe_language
 
         max_retries = 3
@@ -209,10 +212,12 @@ class PipelineService:
 
         step = result.ensure_step("clean")
         step.mark_running()
+        logger.info("[3/5] Cleaning transcript (%d chars)", len(result.transcript.text))
         original = result.transcript.text
         cleaned = cleaner.clean(original)
         result.cleaned_transcript = cleaned
         step.mark_success(original_len=len(original), cleaned_len=len(cleaned))
+        logger.info("  → Cleaned: %d → %d chars", len(original), len(cleaned))
 
         # Cleanup audio after successful transcription + cleaning
         if self.settings.cleanup_audio and result.audio_path:
@@ -231,6 +236,7 @@ class PipelineService:
 
         step = result.ensure_step("summarize")
         step.mark_running()
+        logger.info("[4/5] Summarizing with LLM...")
         try:
             text = result.cleaned_transcript or result.transcript.text
             summary = self.summarizer.summarize(
@@ -241,6 +247,7 @@ class PipelineService:
             self.summarizer.unload()
             result.summary = summary
             step.mark_success()
+            logger.info("  → Summary ready (%d key points, %d tags)", len(summary.key_points or []), len(summary.tags or []))
             self.ckpt.save(result)
         except Exception as exc:
             step.mark_error(exc)
@@ -256,6 +263,7 @@ class PipelineService:
 
         step = result.ensure_step("store")
         step.mark_running()
+        logger.info("[5/5] Storing to %s", "Notion" if self.storage else "JSON")
         try:
             if self.storage.check_duplicate(result.url):
                 step.mark_skipped("duplicate")
@@ -264,6 +272,7 @@ class PipelineService:
             payload = self._build_storage_payload(result)
             meta = self.storage.write(payload)
             step.mark_success(**meta)
+            logger.info("  → Stored: %s", meta.get("url") or meta.get("id", "ok"))
             self.ckpt.save(result)
         except Exception as exc:
             step.mark_error(exc)
