@@ -28,10 +28,11 @@ Transform internet content into searchable personal knowledge base:
 
 | Step | Module | Technology | VRAM Usage |
 |------|--------|------------|----------|
-| 1. Download | downloader.py | yt-dlp | - |
-| 2. Transcribe | transcriber.py | faster-whisper (configurable, default: small) | ~2GB |
-| 3. Summarize | summarizer.py | Ollama qwen3.5 with qwen2.5 fallback | ~4-7GB |
-| 4. Archive | notion_writer.py | Notion API / Mock writer | - |
+| 1. Download | providers.download | yt-dlp | - |
+| 2. Transcribe | providers.transcription | faster-whisper (configurable, default: small) | ~2GB |
+| 3. Clean | domain.transcript_cleaner | Regex + heuristics (optional) | - |
+| 4. Summarize | providers.summarization | Ollama qwen3.5 with qwen2.5 fallback | ~4-7GB |
+| 5. Archive | providers.storage | Notion API / JSON local | - |
 
 **Total VRAM**: ~6-9GB when using NVIDIA GPU acceleration (sequential execution)
 
@@ -70,8 +71,8 @@ cd clipvault
 python -m venv venv
 .\venv\Scripts\activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Install package (editable mode)
+pip install -e .
 ```
 
 ### 2. Install yt-dlp
@@ -194,16 +195,17 @@ Use `--skip-notion` or set `DISABLE_NOTION=1` when you want to test download, tr
 .\venv\Scripts\activate
 
 # Process single video
-python main.py "https://www.youtube.com/watch?v=xxx"
+clipvault "https://www.youtube.com/watch?v=xxx"
 
 # Debug mode
-python main.py "url" --log-level DEBUG
+clipvault "url" --log-level DEBUG
 
 # Skip specific steps
-python main.py "url" --skip-summary
-python main.py "url" --skip-notion
-python main.py "url" --disable-cleaning
-python main.py "url" --no-cleanup
+clipvault "url" --skip summarize
+clipvault "url" --skip-notion
+clipvault "url" --disable-cleaning
+clipvault "url" --no-cleanup
+clipvault "url" --dry-run
 ```
 
 ### Batch Processing
@@ -217,7 +219,7 @@ https://youtube.com/watch?v=xxx3
 "@ | Out-File -Encoding utf8 urls.txt
 
 # Batch process
-Get-Content urls.txt | ForEach-Object { python main.py $_ }
+Get-Content urls.txt | ForEach-Object { clipvault $_ }
 ```
 
 ### OpenClaw Skill Integration
@@ -260,13 +262,13 @@ python -c "import torch; print(f'VRAM: {torch.cuda.get_device_properties(0).tota
 
 1. **Reduce model precision**
    ```python
-   # transcriber.py
+   # src/clipvault/providers/transcription/whisper_local.py
    COMPUTE_TYPE = "int8"  # Change from float16 to int8
    ```
 
 2. **Use smaller LLM**
    ```python
-   # summarizer.py
+   # src/clipvault/providers/summarization/ollama_local.py
    DEFAULT_MODEL = "llama3.2:3b-instruct-q4_K_M"  # ~2-3GB
    ```
 
@@ -302,21 +304,28 @@ python -c "import torch; print(f'VRAM: {torch.cuda.get_device_properties(0).tota
 
 ```
 clipvault/
-├── main.py              # Main entry point
-├── downloader.py        # Video/content downloader
-├── transcriber.py       # Whisper transcription
-├── transcript_cleaner.py # Optional transcript preprocessor
-├── summarizer.py        # LLM summarization
-├── notion_writer.py     # Notion API writer / mock writer
-├── requirements.txt     # Dependencies
-├── .env.example         # Config template
-├── .env                 # Local config (gitignore)
-├── downloads/           # Temporary audio files
-├── logs/                # Execution logs
-├── checkpoints/         # Resume points
-├── outputs/             # Generated local outputs (gitignored)
-├── README.md            # English docs
-└── README.zh-CN.md      # Chinese docs
+├── src/clipvault/           # Main package
+│   ├── cli/                 # CLI entry point (argparse)
+│   ├── config/              # Settings & runtime config
+│   ├── models/              # Data models (dataclasses)
+│   ├── providers/           # Provider implementations
+│   │   ├── download/        #   yt-dlp downloader
+│   │   ├── transcription/   #   Whisper local / OpenAI cloud
+│   │   ├── summarization/   #   Ollama local / OpenAI cloud
+│   │   └── storage/         #   Notion / JSON writers
+│   ├── domain/              # Pure domain logic (transcript cleaning)
+│   ├── services/            # Pipeline orchestrator, factory, checkpoints
+│   ├── skill/               # Headless SkillService facade
+│   └── platform/            # OS-specific workarounds
+├── tests/                   # Unit tests (pytest)
+├── pyproject.toml           # Build config & dependencies
+├── .env                     # Local config (gitignored)
+├── downloads/               # Temporary audio files
+├── logs/                    # Execution logs
+├── checkpoints/             # Resume points
+├── outputs/                 # Generated outputs (gitignored)
+├── README.md                # English docs
+└── README.zh-CN.md          # Chinese docs
 ```
 
 ---

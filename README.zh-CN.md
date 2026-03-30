@@ -22,10 +22,11 @@
 
 | 步骤 | 模块 | 技术 | 显存占用 |
 |------|------|------|----------|
-| 1. 下载内容 | downloader.py | yt-dlp | - |
-| 2. 语音转文本 | transcriber.py | faster-whisper（可配置，默认 `small`） | ~2GB |
-| 3. 生成摘要 | summarizer.py | Ollama `qwen3.5`，失败时回退 `qwen2.5` | ~4-7GB |
-| 4. 归档 | notion_writer.py | Notion API / Mock writer | - |
+| 1. 下载内容 | providers.download | yt-dlp | - |
+| 2. 语音转文本 | providers.transcription | faster-whisper（可配置，默认 `small`） | ~2GB |
+| 3. 文本清洗 | domain.transcript_cleaner | 正则 + 启发式规则（可选） | - |
+| 4. 生成摘要 | providers.summarization | Ollama `qwen3.5`，失败时回退 `qwen2.5` | ~4-7GB |
+| 5. 归档 | providers.storage | Notion API / JSON 本地存储 | - |
 
 **总显存占用**：约 `6-9GB`（在 NVIDIA GPU 加速下，串行执行，不并发）
 
@@ -65,7 +66,7 @@ python -m venv venv
 .\venv\Scripts\activate
 
 # 安装依赖
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ### 2. 安装 yt-dlp
@@ -120,7 +121,7 @@ ollama list
 
 1. 访问 https://www.notion.so/my-integrations
 2. 点击 **New integration**
-3. 名称: `Resource2Knowledge`
+3. 名称: `ClipVault`
 4. 获取 **Internal Integration Token**
 
 ### 步骤 2: 创建数据库
@@ -143,7 +144,7 @@ ollama list
 ### 步骤 3: 分享数据库给 Integration
 
 1. 打开 Notion 数据库页面
-2. 点击右上角 `...` → `Connections` → 添加 `Resource2Knowledge`
+2. 点击右上角 `...` → `Connections` → 添加 `ClipVault`
 
 ### 步骤 4: 获取 Database ID
 
@@ -192,16 +193,17 @@ ENABLE_TRANSCRIPT_CLEANING=1
 .\venv\Scripts\activate
 
 # 运行单个视频
-python main.py "https://www.youtube.com/watch?v=xxx"
+clipvault "https://www.youtube.com/watch?v=xxx"
 
 # 调试模式
-python main.py "url" --log-level DEBUG
+clipvault "url" --log-level DEBUG
 
 # 跳过部分步骤
-python main.py "url" --skip-summary
-python main.py "url" --skip-notion
-python main.py "url" --disable-cleaning
-python main.py "url" --no-cleanup
+clipvault "url" --skip summarize
+clipvault "url" --skip-notion
+clipvault "url" --disable-cleaning
+clipvault "url" --no-cleanup
+clipvault "url" --dry-run
 ```
 
 ### 批量处理
@@ -215,7 +217,7 @@ https://youtube.com/watch?v=xxx3
 "@ | Out-File -Encoding utf8 urls.txt
 
 # 批量处理
-Get-Content urls.txt | ForEach-Object { python main.py $_ }
+Get-Content urls.txt | ForEach-Object { clipvault $_ }
 ```
 
 ### 自动化集成
@@ -257,13 +259,13 @@ python -c "import torch; print(f'VRAM: {torch.cuda.get_device_properties(0).tota
 
 1. **降低模型精度**
    ```python
-   # transcriber.py
+   # src/clipvault/providers/transcription/whisper_local.py
    COMPUTE_TYPE = "int8"  # 从 float16 改为 int8
    ```
 
 2. **使用更小的 LLM**
    ```python
-   # summarizer.py
+   # src/clipvault/providers/summarization/ollama_local.py
    DEFAULT_MODEL = "llama3.2:3b-instruct-q4_K_M"  # ~2-3GB
    ```
 
@@ -299,21 +301,28 @@ python -c "import torch; print(f'VRAM: {torch.cuda.get_device_properties(0).tota
 
 ```
 clipvault/
-├── main.py              # 主入口
-├── downloader.py        # 视频 / 内容下载
-├── transcriber.py       # Whisper 转录
-├── transcript_cleaner.py # 可选 transcript 预处理
-├── summarizer.py        # LLM 摘要
-├── notion_writer.py     # Notion 写入 / Mock writer
-├── requirements.txt     # 依赖
-├── .env.example         # 配置模板
-├── .env                 # 本地配置 (gitignore)
-├── downloads/           # 临时音频
-├── logs/                # 运行日志
-├── checkpoints/         # 断点续跑文件
-├── outputs/             # 本地产物（已 gitignore）
-├── README.md            # 英文文档
-└── README.zh-CN.md      # 中文文档
+├── src/clipvault/           # 主包
+│   ├── cli/                 # CLI 入口（argparse）
+│   ├── config/              # 配置 & 运行时参数
+│   ├── models/              # 数据模型（dataclasses）
+│   ├── providers/           # 供应商实现
+│   │   ├── download/        #   yt-dlp 下载器
+│   │   ├── transcription/   #   Whisper 本地 / OpenAI 云端
+│   │   ├── summarization/   #   Ollama 本地 / OpenAI 云端
+│   │   └── storage/         #   Notion / JSON 写入
+│   ├── domain/              # 纯领域逻辑（transcript 清洗）
+│   ├── services/            # 流水线编排、工厂、检查点
+│   ├── skill/               # 无头 SkillService 外观
+│   └── platform/            # 平台兼容（如 Windows UTF-8）
+├── tests/                   # 单元测试（pytest）
+├── pyproject.toml           # 构建配置 & 依赖
+├── .env                     # 本地配置（已 gitignore）
+├── downloads/               # 临时音频
+├── logs/                    # 运行日志
+├── checkpoints/             # 断点续跑文件
+├── outputs/                 # 本地产物（已 gitignore）
+├── README.md                # 英文文档
+└── README.zh-CN.md          # 中文文档
 ```
 
 ---
