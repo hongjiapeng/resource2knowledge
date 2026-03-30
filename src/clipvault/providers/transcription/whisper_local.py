@@ -6,12 +6,15 @@ Local Whisper transcription provider (faster-whisper).
 from __future__ import annotations
 
 import gc
+import logging
 from typing import Optional
 
 import torch
 
 from ...models.transcript import TranscriptResult, TranscriptSegment
 from ..base import Transcriber
+
+logger = logging.getLogger("clipvault.transcription")
 
 
 class WhisperLocalTranscriber(Transcriber):
@@ -57,6 +60,7 @@ class WhisperLocalTranscriber(Transcriber):
             compute_type=compute_type,
             download_root=self.download_root,
         )
+        logger.info("Whisper model loaded: size=%s, device=%s, compute_type=%s", self.model_size, device, compute_type)
 
     def transcribe(
         self,
