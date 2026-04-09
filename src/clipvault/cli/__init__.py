@@ -16,6 +16,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import torch
+
 from ..config.settings import AppSettings
 from ..config.runtime import RuntimeConfig
 from ..platform import fix_encoding
@@ -38,6 +40,36 @@ def _setup_logging(settings: AppSettings, level: str) -> logging.Logger:
     logger.addHandler(fh)
     logger.addHandler(ch)
     return logger
+
+
+def _log_runtime_environment(logger: logging.Logger, project_dir: Path) -> None:
+    """Log interpreter, torch, and CUDA info; warn if not using project venv."""
+    current_exe = Path(sys.executable).resolve()
+    expected_venv = (project_dir / "venv" / "Scripts" / "python.exe").resolve()
+
+    logger.info(
+        "Runtime environment: executable=%s, torch=%s, cuda_available=%s",
+        current_exe, torch.__version__, torch.cuda.is_available(),
+    )
+
+    if current_exe != expected_venv:
+        logger.warning(
+            "Current interpreter is not the project venv. "
+            "expected=%s current=%s",
+            expected_venv, current_exe,
+        )
+        if not torch.cuda.is_available() and "cpu" in torch.__version__:
+            logger.warning(
+                "PyTorch is CPU-only (%s). Whisper will run on CPU "
+                "(very slow). Use the venv python to get CUDA support.",
+                torch.__version__,
+            )
+    elif not torch.cuda.is_available():
+        logger.warning(
+            "Running from project venv but CUDA is not available "
+            "(torch=%s). Whisper will fall back to CPU.",
+            torch.__version__,
+        )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -95,7 +127,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     project_dir = Path(__file__).resolve().parents[3]  # src/clipvault/cli -> project root
     settings = AppSettings.from_env(project_dir=project_dir)
 
-    _setup_logging(settings, args.log_level)
+    logger = _setup_logging(settings, args.log_level)
+
+    # Log runtime environment for debugging
+    _log_runtime_environment(logger, project_dir)
 
     # Build runtime config
     skip = set(args.skip)
