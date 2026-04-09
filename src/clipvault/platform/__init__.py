@@ -16,11 +16,23 @@ def fix_encoding() -> None:
     """Ensure UTF-8 stdout/stderr on Windows."""
     if sys.platform != "win32":
         return
-    if not isinstance(sys.stdout, io.TextIOWrapper):
-        sys.stdout = io.TextIOWrapper(
-            sys.stdout.buffer, encoding="utf-8", errors="replace"
-        )
-    if not isinstance(sys.stderr, io.TextIOWrapper):
-        sys.stderr = io.TextIOWrapper(
-            sys.stderr.buffer, encoding="utf-8", errors="replace"
-        )
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name)
+        if isinstance(stream, io.TextIOWrapper):
+            if stream.encoding and stream.encoding.lower().replace("-", "") == "utf8":
+                continue
+            # Re-wrap with UTF-8 — flush first to avoid data loss
+            stream.flush()
+            setattr(
+                sys, name,
+                io.TextIOWrapper(
+                    stream.buffer, encoding="utf-8", errors="replace",
+                ),
+            )
+        else:
+            setattr(
+                sys, name,
+                io.TextIOWrapper(
+                    stream.buffer, encoding="utf-8", errors="replace",
+                ),
+            )

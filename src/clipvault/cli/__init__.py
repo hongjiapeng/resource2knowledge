@@ -149,9 +149,19 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     pipeline = create_pipeline_service(settings)
 
+    # Separate pipeline execution from output display so that
+    # a print/encoding error does not mask a successful pipeline
+    # and cause the caller (agent) to retry indefinitely.
     try:
         result = pipeline.run(args.url, runtime=rc)
+    except Exception as exc:
+        if args.json_output:
+            print(json.dumps({"error": str(exc)}, ensure_ascii=False))
+        else:
+            logger.error("Pipeline failed: %s", exc)
+        return 1
 
+    try:
         if args.json_output:
             print(result.to_json())
         else:
@@ -165,12 +175,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             print("=" * 50)
             print()
             print(result.to_json())
-
-        return 0
-
     except Exception as exc:
-        if args.json_output:
-            print(json.dumps({"error": str(exc)}, ensure_ascii=False))
-        else:
-            logging.getLogger("clipvault").error("Pipeline failed: %s", exc)
-        return 1
+        logger.error("Failed to display result: %s", exc)
+
+    return 0
