@@ -310,11 +310,6 @@ class PipelineService:
         logger.info("-"*30)
         logger.info("📝 Storing to %s", "Notion" if self.storage else "JSON")
         try:
-            if not rc.force_reprocess and self.storage.check_duplicate(result.url):
-                step.mark_skipped("duplicate")
-                logger.info("⏭️ Skipping store (duplicate URL)")
-                return
-
             payload = self._build_storage_payload(result)
             meta = self.storage.write(payload)
             step.mark_success(**meta)
