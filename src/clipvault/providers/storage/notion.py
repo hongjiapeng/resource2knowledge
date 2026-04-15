@@ -62,8 +62,12 @@ class NotionStorageWriter(StorageWriter):
                 page_size=1,
             )
             return len(resp.get("results", [])) > 0
-        except Exception:
-            return False
+        except Exception as exc:
+            import logging
+            logging.getLogger("clipvault.pipeline").warning(
+                "Notion duplicate check failed (treating as duplicate for safety): %s", exc
+            )
+            return True  # fail-safe: assume duplicate to prevent wasted work
 
     # ── property / block builders ─────────────────────────
 

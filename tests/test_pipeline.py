@@ -88,3 +88,34 @@ class TestPipelineService:
 
         names = [s.name for s in result.steps]
         assert len(names) == len(set(names)), f"duplicate steps: {names}"
+
+    def test_duplicate_url_skips_pipeline(
+        self, tmp_path, stub_downloader, stub_transcriber, stub_summarizer, stub_storage
+    ):
+        """Running the same URL twice should return the completed result without re-running."""
+        svc = _make_service(tmp_path, stub_downloader, stub_transcriber, stub_summarizer, stub_storage)
+        url = "https://www.youtube.com/watch?v=dup_test"
+
+        result1 = svc.run(url)
+        assert result1.status == StepStatus.SUCCESS
+        assert len(stub_storage.pages) == 1
+
+        result2 = svc.run(url)
+        assert result2.status == StepStatus.SUCCESS  # returns the completed checkpoint
+        assert result2.url == url
+        assert len(stub_storage.pages) == 1  # no new page created
+
+    def test_force_reprocess_ignores_duplicate(
+        self, tmp_path, stub_downloader, stub_transcriber, stub_summarizer, stub_storage
+    ):
+        """--force should reprocess even if URL already exists in storage."""
+        svc = _make_service(tmp_path, stub_downloader, stub_transcriber, stub_summarizer, stub_storage)
+        url = "https://www.youtube.com/watch?v=force_test"
+
+        result1 = svc.run(url)
+        assert result1.status == StepStatus.SUCCESS
+
+        rc = RuntimeConfig(force_reprocess=True)
+        result2 = svc.run(url, runtime=rc)
+        assert result2.status == StepStatus.SUCCESS
+        assert len(stub_storage.pages) == 2

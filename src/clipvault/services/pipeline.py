@@ -55,7 +55,16 @@ class PipelineService:
         """Execute the full pipeline and return a structured result."""
         rc = runtime or RuntimeConfig()
 
-        # Resume from checkpoint
+        # Idempotency: if already completed, return immediately
+        if not rc.force_reprocess and self.ckpt.is_completed(url):
+            existing = self.ckpt.load(url)
+            logger.info("="*50)
+            logger.info("⏭️ Already processed: %s", url)
+            logger.info("="*50)
+            logger.info("Use --force to reprocess.")
+            return existing  # type: ignore[return-value]
+
+        # Resume from checkpoint (in-progress / failed)
         result = self._maybe_resume(url, rc)
         resource = ResourceInput(url=url, language=rc.language)
 
@@ -94,13 +103,13 @@ class PipelineService:
                     - datetime.fromisoformat(result.started_at)
                 ).total_seconds()
 
-            self.ckpt.remove(url)
             logger.info("")
             logger.info("="*50)
             logger.info("✅ Processing complete!")
             logger.info("⏱️ Total elapsed: %.1fs", result.elapsed_seconds or 0)
             logger.info("="*50)
-            logger.info("🗑️ Checkpoint removed")
+            self.ckpt.save(result)
+            logger.info("💾 Checkpoint saved (completed)")
 
         except Exception as exc:
             result.status = StepStatus.ERROR
@@ -301,7 +310,7 @@ class PipelineService:
         logger.info("-"*30)
         logger.info("📝 Storing to %s", "Notion" if self.storage else "JSON")
         try:
-            if self.storage.check_duplicate(result.url):
+            if not rc.force_reprocess and self.storage.check_duplicate(result.url):
                 step.mark_skipped("duplicate")
                 logger.info("⏭️ Skipping store (duplicate URL)")
                 return
@@ -322,11 +331,12 @@ class PipelineService:
         if not rc.resume:
             return None
         result = self.ckpt.load(url)
-        if result:
+        if result and result.status != StepStatus.SUCCESS:
             logger.info("📂 Resuming from checkpoint...")
             if result.title:
                 logger.info("   Existing title: %s", result.title)
-        return result
+            return result
+        return None
 
     @staticmethod
     def _build_storage_payload(result: PipelineResult) -> dict:

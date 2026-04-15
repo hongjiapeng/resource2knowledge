@@ -39,5 +39,8 @@ class RuntimeConfig:
     # Disable storage write for this run
     skip_storage: bool = False
 
+    # Force reprocessing even if URL already exists in storage
+    force_reprocess: bool = False
+
     def should_skip(self, step_name: str) -> bool:
         return step_name in self.skip_steps

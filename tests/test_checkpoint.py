@@ -24,15 +24,32 @@ class TestCheckpointManager:
         assert loaded.title == "Test"
         assert len(loaded.steps) == 1
 
-    def test_load_returns_none_for_success(self, tmp_path: Path):
-        """Completed checkpoints should not be resumed."""
+    def test_load_returns_completed_result(self, tmp_path: Path):
+        """Completed checkpoints should be loadable (for idempotency check)."""
         mgr = CheckpointManager(tmp_path / "ckpts")
         result = PipelineResult(url="https://example.com/done")
         result.status = StepStatus.SUCCESS
         mgr.save(result)
 
         loaded = mgr.load("https://example.com/done")
-        assert loaded is None
+        assert loaded is not None
+        assert loaded.status == StepStatus.SUCCESS
+
+    def test_is_completed(self, tmp_path: Path):
+        """is_completed should return True only for SUCCESS checkpoints."""
+        mgr = CheckpointManager(tmp_path / "ckpts")
+
+        assert mgr.is_completed("https://example.com/nope") is False
+
+        result = PipelineResult(url="https://example.com/done")
+        result.status = StepStatus.SUCCESS
+        mgr.save(result)
+        assert mgr.is_completed("https://example.com/done") is True
+
+        failed = PipelineResult(url="https://example.com/failed")
+        failed.status = StepStatus.ERROR
+        mgr.save(failed)
+        assert mgr.is_completed("https://example.com/failed") is False
 
     def test_load_returns_none_for_missing(self, tmp_path: Path):
         mgr = CheckpointManager(tmp_path / "ckpts")

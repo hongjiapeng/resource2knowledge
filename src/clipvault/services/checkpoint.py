@@ -30,18 +30,21 @@ class CheckpointManager:
             json.dump(result.to_checkpoint(), f, ensure_ascii=False, indent=2)
 
     def load(self, url: str) -> Optional[PipelineResult]:
+        """Load checkpoint for a URL. Returns the result regardless of status."""
         path = self.path_for(url)
         if not path.exists():
             return None
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            result = PipelineResult.from_checkpoint(data)
-            if result.status == StepStatus.SUCCESS:
-                return None  # already done
-            return result
+            return PipelineResult.from_checkpoint(data)
         except (json.JSONDecodeError, KeyError):
             return None
+
+    def is_completed(self, url: str) -> bool:
+        """Check if a URL has been successfully processed."""
+        result = self.load(url)
+        return result is not None and result.status == StepStatus.SUCCESS
 
     def remove(self, url: str) -> None:
         path = self.path_for(url)

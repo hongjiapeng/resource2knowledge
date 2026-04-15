@@ -101,6 +101,7 @@ examples:
     parser.add_argument("--no-resume", action="store_true", help="Ignore checkpoints, start fresh")
     parser.add_argument("--dry-run", action="store_true", help="Validate inputs only, do not execute")
     parser.add_argument("--force-download", action="store_true", help="Re-download even if file exists")
+    parser.add_argument("--force", action="store_true", help="Reprocess even if URL already exists in storage")
     parser.add_argument("--language", default=None, help="Override transcription language")
     parser.add_argument(
         "--log-level",
@@ -142,6 +143,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         resume=not args.no_resume,
         dry_run=args.dry_run,
         force_download=args.force_download,
+        force_reprocess=args.force,
         language=args.language,
         disable_cleaning=args.disable_cleaning,
         skip_storage="store" in skip,
